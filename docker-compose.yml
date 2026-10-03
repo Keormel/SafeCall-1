@@ -10,8 +10,8 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hachaton}:${POSTGRES_PASSWORD:-hachaton}@postgres:5432/${POSTGRES_DB:-hachaton}
       RISK_ENGINE_URL: http://risk-engine:8001
-      LLM_API_URL: ${LLM_API_URL:-}
-      LLM_API_KEY: ${LLM_API_KEY:-}
+      GEMINI_API_URL: ${GEMINI_API_URL:-https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       CAMPAIGN_ENGINE_URL: http://campaign-engine:8002
     ports:
       - "${API_PORT:-8000}:8000"
