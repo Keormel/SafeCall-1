@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.5-flash"
     llm_timeout_seconds: float = 8.0
     llm_cache_size: int = 1024
+    llm_cache_ttl_seconds: int = 7 * 24 * 3600
+
+    # Shared state for several API workers: rate limits + fingerprint cache.
+    # Empty -> everything stays in process memory (fine for a single worker).
+    redis_url: str | None = None
     free_text_max_length: int = 1000
 
     rate_limit_enabled: bool = True

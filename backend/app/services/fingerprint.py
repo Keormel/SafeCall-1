@@ -97,7 +97,58 @@ class LRUCache:
         return len(self._data)
 
 
-_cache = LRUCache(get_settings().llm_cache_size)
+class FingerprintCache:
+    """Local LRU in front of an optional shared Redis, so every worker reuses LLM answers.
+
+    Redis is best-effort: if it is down, we log and carry on with the local LRU only.
+    """
+
+    KEY_PREFIX = "safecall:fp:"
+
+    def __init__(self, max_size: int, redis_url: str | None, ttl_seconds: int) -> None:
+        self.local = LRUCache(max_size)
+        self.ttl_seconds = ttl_seconds
+        self.redis = None
+        if redis_url:
+            import redis.asyncio as aioredis
+
+            self.redis = aioredis.from_url(
+                redis_url, decode_responses=True, socket_timeout=0.5, socket_connect_timeout=0.5
+            )
+
+    async def get(self, key: str) -> LLMResult | None:
+        value = self.local.get(key)
+        if value is not None or self.redis is None:
+            return value
+        from redis.exceptions import RedisError
+
+        try:
+            raw = await self.redis.get(self.KEY_PREFIX + key)
+        except RedisError as exc:
+            logger.warning("Redis unavailable for fingerprint cache: %s", type(exc).__name__)
+            return None
+        if raw is None:
+            return None
+        value = parse_llm_response(raw)
+        if value is not None:
+            self.local.set(key, value)
+        return value
+
+    async def set(self, key: str, value: LLMResult) -> None:
+        self.local.set(key, value)
+        if self.redis is None:
+            return
+        from redis.exceptions import RedisError
+
+        payload = json.dumps({"category": value.category, "tags": list(value.tags)})
+        try:
+            await self.redis.set(self.KEY_PREFIX + key, payload, ex=self.ttl_seconds)
+        except RedisError as exc:
+            logger.warning("Redis unavailable for fingerprint cache: %s", type(exc).__name__)
+
+
+_settings = get_settings()
+_cache = FingerprintCache(_settings.llm_cache_size, _settings.redis_url, _settings.llm_cache_ttl_seconds)
 
 
 def normalize_text(text: str) -> str:
@@ -217,7 +268,7 @@ async def build_fingerprint(
 
     text = free_text.strip()[: get_settings().free_text_max_length]
     key = hash_free_text(text)
-    result = _cache.get(key)
+    result = await _cache.get(key)
     if result is None:
         try:
             result = await (classifier or gemini_classifier)(text)
@@ -226,7 +277,7 @@ async def build_fingerprint(
             result = None
         if result is None:
             return base
-        _cache.set(key, result)
+        await _cache.set(key, result)
 
     tags = set(base) | set(result.tags)
     # The user's explicit category wins; the LLM only refines a generic OTHER.
@@ -237,4 +288,5 @@ async def build_fingerprint(
 
 
 def clear_cache() -> None:
-    _cache.clear()
+    """Drop the process-local layer (tests). Redis entries expire by TTL."""
+    _cache.local.clear()

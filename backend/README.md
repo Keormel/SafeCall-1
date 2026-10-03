@@ -37,7 +37,7 @@ backend/
 │   └── services/
 │       ├── risk_engine.py   # чистая функция скоринга + запись в БД
 │       ├── campaign_engine.py  # Жаккар, привязка к кампаниям, кластеризация
-│       ├── fingerprint.py   # словарь тегов, LLM + fallback, LRU-кэш
+│       ├── fingerprint.py   # словарь тегов, LLM + fallback, кэш (LRU + Redis)
 │       ├── phone.py         # E.164 нормализация, маскирование для логов
 │       └── report_service.py   # сценарий приёма репорта
 ├── alembic/                 # миграции (async)
@@ -50,11 +50,11 @@ backend/
 ### Docker (весь стек)
 
 `docker-compose.yml` и `.env.example` лежат в **корне репозитория**, команды запускаются оттуда.
-Compose поднимает три сервиса: `api` (эта папка), `postgres` и `dashboard`.
+Compose поднимает четыре сервиса: `api` (эта папка), `postgres`, `redis` и `dashboard`.
 
 ```bash
 cp .env.example .env          # поменяйте JWT_SECRET и ADMIN_API_KEY, при желании задайте GEMINI_API_KEY
-docker compose up --build -d  # api :8000, dashboard :3000, postgres :5432
+docker compose up --build -d  # api :8000, dashboard :3000, postgres :5432, redis :6379
 docker compose exec api python -m scripts.seed --reset
 ```
 
@@ -75,7 +75,7 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 
 # PostgreSQL из compose, API локально с --reload
-(cd .. && docker compose up -d postgres)
+(cd .. && docker compose up -d postgres redis)
 ln -sf ../.env .env      # DATABASE_URL из .env.example уже смотрит на localhost:5432
 
 # Если Docker недоступен, для быстрой пробы подойдёт SQLite:
@@ -131,7 +131,9 @@ openapi-generator-cli generate -i openapi.json -g dart-dio -o safecall_api
   может уточнить только если пользователь выбрал `OTHER`.
 - Ошибка, таймаут (`LLM_TIMEOUT_SECONDS`), ошибка API Gemini (например, квота) или пустой `GEMINI_API_KEY`
   приводят к fallback на чекбоксы.
-- Результат кэшируется в in-memory LRU по HMAC текста.
+- Результат кэшируется по HMAC текста в два слоя: локальный LRU процесса и общий Redis
+  (TTL `LLM_CACHE_TTL_SECONDS`, по умолчанию 7 дней). Так одинаковый текст не уходит в Gemini
+  повторно ни с одного воркера. Если Redis недоступен, работает только локальный слой.
 
 ### Campaign engine (`services/campaign_engine.py`)
 
@@ -172,7 +174,7 @@ openapi-generator-cli generate -i openapi.json -g dart-dio -o safecall_api
 `VALIDATION_ERROR` / `INVALID_PHONE` 422, `INVALID_CURSOR` 400, `RATE_LIMITED` 429.
 
 Лимиты считаются на устройство: `/report` 10 в час, `/check-number` 60 в минуту,
-остальное 120 в минуту. Номера можно присылать в любом формате (`069 123 456`, `+373 69 123456`).
+остальное 120 в минуту, общие для всех воркеров через Redis. Номера можно присылать в любом формате (`069 123 456`, `+373 69 123456`).
 По умолчанию используется регион MD, в БД хранится только E.164.
 
 ```bash
@@ -286,7 +288,7 @@ docker compose exec api python -m scripts.seed --demo-step   # локально:
 
 Все переменные перечислены в корневом `.env.example`. Самые важные:
 `DATABASE_URL`, `JWT_SECRET`, `ADMIN_API_KEY`, `GEMINI_API_KEY`, `GEMINI_MODEL`,
-`RATE_LIMIT_*`, `RECALC_INTERVAL_MINUTES`, `SCHEDULER_ENABLED`.
+`REDIS_URL`, `RATE_LIMIT_*`, `RECALC_INTERVAL_MINUTES`, `SCHEDULER_ENABLED`.
 
 Для дашборда: CORS открыт (`CORS_ORIGINS`), статистику отдаёт `GET /api/v1/admin/stats`
 с заголовком `X-Admin-Key`, списки — `/campaigns` и `/numbers` (нужен JWT, см. `/auth/device`).
@@ -297,7 +299,9 @@ docker compose exec api python -m scripts.seed --demo-step   # локально:
 - `device_id` выдаёт себе сам клиент. От массовой накрутки защищают лимиты, один голос на
   устройство, взвешивание по `reputation` и потолок MEDIUM. Для продакшена нужна аттестация
   устройства (Play Integrity).
-- Лимиты slowapi и LRU-кэш fingerprint'ов живут в памяти процесса. Если запускать несколько
-  воркеров, их нужно вынести в Redis.
+- Лимиты и кэш fingerprint'ов хранятся в Redis, если задан `REDIS_URL`; без него — в памяти
+  процесса, и тогда при нескольких воркерах каждый считает лимиты сам. Если Redis падает,
+  лимиты временно считаются в памяти, жалобы продолжают приниматься. Redis без persistence:
+  при рестарте счётчики и кэш обнуляются, это допустимо.
 - Feedback пока только сохраняется. Следующий шаг: корректировать по нему `reputation`
   устройств и пороги.
