@@ -29,7 +29,7 @@ backend/
 │   ├── db.py                # async engine / sessions
 │   ├── models.py            # devices, numbers, reports, campaigns, campaign_numbers, feedback
 │   ├── schemas.py           # Pydantic-схемы запросов/ответов (OpenAPI → Dart-клиент)
-│   ├── security.py          # device_id → JWT, X-Admin-Key
+│   ├── security.py          # device_id → JWT, admin-JWT по X-Admin-Key
 │   ├── errors.py            # единый формат ошибок {"error": {"code", "message"}}
 │   ├── limiter.py           # slowapi, ключ = device_id из JWT (или IP)
 │   ├── jobs.py              # периодический пересчёт рисков и кампаний
@@ -139,6 +139,11 @@ openapi-generator-cli generate -i openapi.json -g dart-dio -o safecall_api
 Уровни: 0–29 `LOW`, 30–59 `MEDIUM`, 60–100 `HIGH`. Если нет ни репортов, ни кампании,
 уровень `UNKNOWN`. Пока уникальных жалобщиков меньше 3, итог не выше `MEDIUM` (score режется до 59).
 
+Жалобы стареют. Первые `REPORT_GRACE_DAYS` (30) дней жалоба весит полностью, затем вес
+уменьшается вдвое каждые `REPORT_HALF_LIFE_DAYS` (90) дней. Голос с весом меньше 0.1
+(примерно через год) не учитывается. Номер без свежих жалоб постепенно опускается до `UNKNOWN`,
+и клиент получает `removed: true` в `/sync`.
+
 ### Fingerprint (`services/fingerprint.py`)
 
 Словарь тегов закрытый. Категории: `BANK POLICE DELIVERY RELATIVE INVESTMENT OTHER`.
@@ -166,8 +171,24 @@ openapi-generator-cli generate -i openapi.json -g dart-dio -o safecall_api
   например «Bank impersonation + OTP, URGENCY».
 - `risk_score` кампании растёт с числом номеров и жалоб, опасные действия
   (OTP/CARD_DATA/TRANSFER/INSTALL_APP) дают +10.
-- Пересчёт идёт сразу при каждом репорте и в фоне раз в `RECALC_INTERVAL_MINUTES` (APScheduler).
-  Вручную его можно запустить через `POST /api/v1/admin/recalculate`.
+- Кампании обслуживаются автоматически. Номер, снятый модерацией, покидает кампанию.
+  Кампании с похожими fingerprint'ами (Жаккар ≥ 0.7) сливаются: остаётся та, где больше номеров,
+  при равенстве — более старая, поэтому id, известные клиентам, не меняются. Кампания, в которой
+  осталось меньше 2 номеров, расформировывается.
+- Создание и слияние кампаний идут под advisory-lock PostgreSQL (`pg_advisory_xact_lock`), так что
+  два одновременных репорта не создадут две одинаковые кампании.
+
+### Фоновые задачи (`jobs.py`)
+
+- **Инкрементальный пересчёт** раз в `RECALC_INTERVAL_MINUTES` (5 мин): репутации по feedback,
+  поиск и обслуживание кампаний. Скоринг пересчитывается только для затронутых номеров: на которые
+  жаловались устройства с изменившейся репутацией, номера в кампаниях и только что отвязанные.
+- **Полный пересчёт** раз в сутки в `FULL_RECALC_HOUR_UTC` (03:00 UTC): все номера, чтобы
+  срабатывало затухание жалоб. Вручную: `POST /api/v1/admin/recalculate`.
+- При нескольких воркерах каждая задача выполняется только в одном из них: перед запуском
+  ставится блокировка в Redis (`SET NX EX`), снимается она только своим токеном. Без Redis
+  задача просто запускается; если Redis недоступен, тоже запускается — задачи идемпотентны.
+- Номера пересчитываются пачками по 500: два запроса на пачку вместо двух на каждый номер.
 
 ### Синхронизация (`GET /sync`)
 
@@ -182,8 +203,12 @@ openapi-generator-cli generate -i openapi.json -g dart-dio -o safecall_api
 
 ## API
 
-Все эндпоинты живут под `/api/v1` и требуют `Authorization: Bearer <JWT>`. Исключения:
-`/auth/device`, `/health` и `/admin/*`, который защищён заголовком `X-Admin-Key`.
+Все эндпоинты живут под `/api/v1` и требуют `Authorization: Bearer <JWT>`, кроме `/auth/device`
+и `/health`. Для `/admin/*` нужен отдельный admin-JWT: его выдаёт `POST /admin/token`
+в обмен на заголовок `X-Admin-Key` (живёт `ADMIN_TOKEN_EXPIRE_HOURS`, 12 ч; лимит 10 запросов
+в минуту). Токен устройства в админку не пускает (403), admin-токен не работает как токен
+устройства. Ответы сжимаются gzip, если клиент шлёт `Accept-Encoding: gzip` (полный `/sync`
+уменьшается примерно в 10 раз).
 Ошибки всегда приходят в одном формате:
 
 ```json
@@ -237,10 +262,13 @@ curl -s "$B/numbers?risk_level=HIGH&limit=20&offset=0" -H "$AUTH"
 curl -s "$B/numbers?campaign_id=1" -H "$AUTH"
 
 # Админка
-curl -s $B/admin/stats -H "X-Admin-Key: $ADMIN_API_KEY"
-curl -s -X POST $B/admin/recalculate -H "X-Admin-Key: $ADMIN_API_KEY"
-curl -s -X POST $B/admin/numbers/+37369000777/remove -H "X-Admin-Key: $ADMIN_API_KEY"   # ложное срабатывание
-curl -s -X POST $B/admin/numbers/+37369000777/restore -H "X-Admin-Key: $ADMIN_API_KEY"
+ADMIN="Authorization: Bearer $(curl -s -X POST $B/admin/token -H "X-Admin-Key: $ADMIN_API_KEY" | jq -r .access_token)"
+curl -s $B/admin/stats -H "$ADMIN"
+curl -s "$B/admin/reports?category=BANK&limit=20" -H "$ADMIN"     # лента жалоб (фильтры: category, phone, campaign_id, since)
+curl -s "$B/admin/activity?days=30" -H "$ADMIN"                    # жалобы, жалобщики и новые номера по дням
+curl -s -X POST $B/admin/recalculate -H "$ADMIN"
+curl -s -X POST $B/admin/numbers/+37369000777/remove -H "$ADMIN"   # ложное срабатывание
+curl -s -X POST $B/admin/numbers/+37369000777/restore -H "$ADMIN"
 ```
 
 ## Демо-сценарий
@@ -308,11 +336,15 @@ docker compose exec api python -m scripts.seed --demo-step   # локально:
 
 Все переменные перечислены в корневом `.env.example`. Самые важные:
 `DATABASE_URL`, `JWT_SECRET`, `ADMIN_API_KEY`, `GEMINI_API_KEY`, `GEMINI_MODEL`,
-`REDIS_URL`, `RATE_LIMIT_*`, `RECALC_INTERVAL_MINUTES`, `SCHEDULER_ENABLED`.
+`REDIS_URL`, `RATE_LIMIT_*`, `RECALC_INTERVAL_MINUTES`, `FULL_RECALC_HOUR_UTC`,
+`REPORT_GRACE_DAYS`, `REPORT_HALF_LIFE_DAYS`, `SCHEDULER_ENABLED`.
 
-Для дашборда: CORS открыт (`CORS_ORIGINS`), статистику отдаёт `GET /api/v1/admin/stats`
-с заголовком `X-Admin-Key`, списки — `/campaigns` и `/numbers` (нужен JWT, см. `/auth/device`).
-Сейчас дашборд показывает захардкоженные данные и к API не подключён.
+При `APP_ENV=production` сервер не запустится, если `JWT_SECRET` или `ADMIN_API_KEY` содержат
+`change-me` или короче 32 символов.
+
+Для дашборда: CORS открыт (`CORS_ORIGINS`). Дашборд получает admin-JWT через `/admin/token`
+и берёт данные из `/admin/stats` (карточки), `/admin/activity` (график), `/admin/reports`
+(раздел Complaints). Сейчас дашборд показывает захардкоженные данные и к API не подключён.
 
 ## Ограничения (хакатон)
 

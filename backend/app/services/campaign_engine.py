@@ -4,7 +4,7 @@ import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Campaign, CampaignNumber, Number, Report, utcnow
@@ -15,6 +15,9 @@ logger = logging.getLogger(__name__)
 SIMILARITY_THRESHOLD = 0.7
 MIN_INDEPENDENT_REPORTS = 2
 MIN_NUMBERS_FOR_CAMPAIGN = 3
+MIN_NUMBERS_TO_KEEP = 2  # below this a campaign is dissolved
+# Arbitrary app-wide key for pg_advisory_xact_lock: serializes campaign creation/merging.
+CAMPAIGN_LOCK_KEY = 7_303_211
 DANGEROUS_TAGS = frozenset({Action.OTP, Action.CARD_DATA, Action.TRANSFER, Action.INSTALL_APP})
 
 CATEGORY_TITLES = {
@@ -147,7 +150,37 @@ def campaign_risk(numbers_count: int, reports_count: int, fingerprint: Iterable[
     return min(score, 100)
 
 
+def plan_merges(
+    campaigns: list[tuple[int, int, frozenset[str]]], threshold: float = SIMILARITY_THRESHOLD
+) -> dict[int, int]:
+    """(id, numbers_count, fingerprint) → {absorbed_id: keeper_id} for campaigns describing one scheme.
+
+    The bigger campaign (then the older one) survives, so ids clients already saw stay stable.
+    """
+    ordered = sorted(campaigns, key=lambda c: (-c[1], c[0]))
+    merges: dict[int, int] = {}
+    for i, (keeper_id, _, keeper_fp) in enumerate(ordered):
+        if keeper_id in merges:
+            continue
+        for other_id, _, other_fp in ordered[i + 1 :]:
+            if other_id not in merges and jaccard(keeper_fp, other_fp) >= threshold:
+                merges[other_id] = keeper_id
+    return merges
+
+
 # ---------------------------------------------------------------- DB layer
+
+
+async def lock_campaigns(session: AsyncSession) -> None:
+    """Serialize campaign creation/merging between concurrent requests and the job.
+
+    Postgres: a transaction-scoped advisory lock, released on commit/rollback. Once acquired, later
+    statements see campaigns committed by whoever held it, so two simultaneous reports cannot create
+    two copies of one campaign. SQLite (tests/dev) serializes writers by itself.
+    """
+    conn = await session.connection()
+    if conn.dialect.name == "postgresql":
+        await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": CAMPAIGN_LOCK_KEY})
 
 
 async def load_report_fingerprints(session: AsyncSession, number_id: int) -> ReportFingerprints:
@@ -211,8 +244,22 @@ async def match_number(session: AsyncSession, number: Number) -> Campaign | None
     return campaign
 
 
+async def _fingerprints_by_number(session: AsyncSession, number_ids: list[int]) -> dict[int, ReportFingerprints]:
+    """All report fingerprints for many numbers in one query (instead of one query per number)."""
+    out: dict[int, ReportFingerprints] = {nid: [] for nid in number_ids}
+    if not number_ids:
+        return out
+    rows = await session.execute(
+        select(Report.number_id, Report.device_id, Report.fingerprint).where(Report.number_id.in_(number_ids))
+    )
+    for nid, device_id, fp in rows.all():
+        out[nid].append((str(device_id), frozenset(fp or ())))
+    return out
+
+
 async def discover_campaigns(session: AsyncSession) -> list[Campaign]:
     """Match unassigned numbers to known campaigns, then cluster the rest into new campaigns."""
+    await lock_campaigns(session)
     numbers = (
         await session.scalars(
             select(Number).where(
@@ -222,16 +269,27 @@ async def discover_campaigns(session: AsyncSession) -> list[Campaign]:
             )
         )
     ).all()
+    fingerprints = await _fingerprints_by_number(session, [n.id for n in numbers])
+    known = await _campaign_fingerprints(session)
 
     candidates: list[tuple[int, frozenset[str]]] = []
     by_id: dict[int, Number] = {}
+    touched: set[int] = set()
     for number in numbers:
-        if await match_number(session, number) is not None:
+        reports = fingerprints[number.id]
+        match = best_campaign_match(reports, known)
+        if match is not None:
+            await assign_number(session, number, match.campaign_id, match.similarity)
+            touched.add(match.campaign_id)
             continue
-        fp = dominant_fingerprint(await load_report_fingerprints(session, number.id))
+        fp = dominant_fingerprint(reports)
         if fp is not None:
             candidates.append((number.id, fp))
             by_id[number.id] = number
+    for campaign_id in touched:
+        campaign = await session.get(Campaign, campaign_id)
+        if campaign is not None:
+            await refresh_campaign(session, campaign)
 
     created: list[Campaign] = []
     for cluster in cluster_numbers(candidates):
@@ -245,3 +303,75 @@ async def discover_campaigns(session: AsyncSession) -> list[Campaign]:
         created.append(campaign)
         logger.info("Created campaign #%s '%s' with %s numbers", campaign.id, campaign.name, len(cluster.members))
     return created
+
+
+async def detach_number(session: AsyncSession, number: Number) -> None:
+    if number.campaign_id is None:
+        return
+    await session.execute(
+        delete(CampaignNumber).where(
+            CampaignNumber.campaign_id == number.campaign_id, CampaignNumber.number_id == number.id
+        )
+    )
+    number.campaign_id = None
+    number.updated_at = utcnow()
+
+
+@dataclass(frozen=True)
+class MaintenanceResult:
+    detached: int
+    merged: int
+    dissolved: int
+    released_number_ids: frozenset[int] = frozenset()  # numbers left without a campaign
+
+
+async def maintain_campaigns(session: AsyncSession) -> MaintenanceResult:
+    """Keep campaigns honest: drop moderated numbers, merge duplicates, dissolve leftovers."""
+    await lock_campaigns(session)
+
+    # 1. Numbers removed by moderation leave their campaign.
+    removed = (
+        await session.scalars(select(Number).where(Number.campaign_id.is_not(None), Number.is_removed.is_(True)))
+    ).all()
+    released: set[int] = set()
+    for number in removed:
+        await detach_number(session, number)
+        released.add(number.id)
+    await session.flush()
+
+    campaigns = (await session.scalars(select(Campaign))).all()
+    for campaign in campaigns:
+        await refresh_campaign(session, campaign)
+
+    # 2. Campaigns that describe the same scheme (e.g. found in parallel) become one.
+    merges = plan_merges([(c.id, c.numbers_count, frozenset(c.fingerprint or ())) for c in campaigns])
+    by_id = {c.id: c for c in campaigns}
+    for absorbed_id, keeper_id in merges.items():
+        keeper_fp = frozenset(by_id[keeper_id].fingerprint or ())
+        members = (await session.scalars(select(Number).where(Number.campaign_id == absorbed_id))).all()
+        fingerprints = await _fingerprints_by_number(session, [n.id for n in members])
+        for number in members:
+            fp = dominant_fingerprint(fingerprints[number.id]) or frozenset()
+            await detach_number(session, number)
+            await assign_number(session, number, keeper_id, round(jaccard(fp, keeper_fp), 4))
+        await session.delete(by_id[absorbed_id])
+        logger.info("Merged campaign #%s into #%s", absorbed_id, keeper_id)
+    await session.flush()
+
+    # 3. A campaign left with fewer than 2 numbers is no longer a pattern.
+    dissolved = 0
+    for campaign in (await session.scalars(select(Campaign))).all():
+        await refresh_campaign(session, campaign)
+        if campaign.numbers_count >= MIN_NUMBERS_TO_KEEP:
+            continue
+        for number in (await session.scalars(select(Number).where(Number.campaign_id == campaign.id))).all():
+            await detach_number(session, number)
+            released.add(number.id)
+        await session.execute(delete(CampaignNumber).where(CampaignNumber.campaign_id == campaign.id))
+        await session.delete(campaign)
+        dissolved += 1
+        logger.info("Dissolved campaign #%s", campaign.id)
+    await session.flush()
+    return MaintenanceResult(
+        detached=len(removed), merged=len(merges), dissolved=dissolved, released_number_ids=frozenset(released)
+    )

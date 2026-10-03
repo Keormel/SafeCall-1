@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.models import Campaign, Device, Feedback, Number, Report, RiskLevel, utcnow
 
 LOW_MAX = 29
@@ -16,6 +17,11 @@ MIN_REPUTATION = 0.0
 MAX_REPUTATION = 2.0
 FEEDBACK_CORRECT_DELTA = 0.1
 FEEDBACK_INCORRECT_DELTA = 0.2
+
+# A vote that has decayed below this weight no longer counts (≈ 1 year with the defaults).
+MIN_VOTE_WEIGHT = 0.1
+DEFAULT_GRACE_DAYS = 30
+DEFAULT_HALF_LIFE_DAYS = 90
 
 REPORTERS_MAX_POINTS = 40
 SIMILARITY_MAX_POINTS = 20
@@ -28,6 +34,7 @@ class ReportSignal:
     category: str
     actions: tuple[str, ...] = ()
     reputation: float = 1.0
+    age_days: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -36,6 +43,15 @@ class RiskResult:
     level: RiskLevel
     unique_reporters: int
     breakdown: dict[str, int] = field(default_factory=dict)
+
+
+def decay_weight(
+    age_days: float, grace_days: float = DEFAULT_GRACE_DAYS, half_life_days: float = DEFAULT_HALF_LIFE_DAYS
+) -> float:
+    """1.0 while fresh, then halves every `half_life_days`, so old complaints fade out."""
+    if age_days <= grace_days:
+        return 1.0
+    return 0.5 ** ((age_days - grace_days) / half_life_days)
 
 
 def reporters_points(effective_reporters: float) -> int:
@@ -80,16 +96,28 @@ def level_for_score(score: int) -> RiskLevel:
     return RiskLevel.HIGH
 
 
-def score_number(signals: list[ReportSignal], campaign_risk_score: float | None = None) -> RiskResult:
+def score_number(
+    signals: list[ReportSignal],
+    campaign_risk_score: float | None = None,
+    grace_days: float = DEFAULT_GRACE_DAYS,
+    half_life_days: float = DEFAULT_HALF_LIFE_DAYS,
+) -> RiskResult:
     # One vote per device: keep the latest signal of each reporter.
     per_device: dict[str, ReportSignal] = {}
     for s in signals:
         per_device[s.device_id] = s
+    # A vote's weight = device reputation (clamped) × how fresh the report is.
     votes = [
-        ReportSignal(s.device_id, s.category, s.actions, min(max(s.reputation, 0.0), MAX_REPUTATION))
+        ReportSignal(
+            s.device_id,
+            s.category,
+            s.actions,
+            min(max(s.reputation, 0.0), MAX_REPUTATION) * decay_weight(s.age_days, grace_days, half_life_days),
+            s.age_days,
+        )
         for s in per_device.values()
     ]
-    trusted = [v for v in votes if v.reputation > 0]
+    trusted = [v for v in votes if v.reputation >= MIN_VOTE_WEIGHT]
     unique_reporters = len(trusted)
 
     if not trusted and campaign_risk_score is None:
@@ -112,12 +140,54 @@ def score_number(signals: list[ReportSignal], campaign_risk_score: float | None 
 
 async def load_signals(session: AsyncSession, number_id: int) -> list[ReportSignal]:
     rows = await session.execute(
-        select(Report.device_id, Report.category, Report.actions, Device.reputation)
+        select(Report.device_id, Report.category, Report.actions, Device.reputation, Report.created_at)
         .join(Device, Device.id == Report.device_id)
         .where(Report.number_id == number_id)
         .order_by(Report.created_at, Report.id)
     )
-    return [ReportSignal(str(d), c, tuple(a or ()), float(r)) for d, c, a, r in rows.all()]
+    now = utcnow()
+    return [
+        ReportSignal(str(d), c, tuple(a or ()), float(r), (now - created).total_seconds() / 86400)
+        for d, c, a, r, created in rows.all()
+    ]
+
+
+def _apply_result(number: Number, signals: list[ReportSignal], campaign_risk: float | None) -> bool:
+    settings = get_settings()
+    result = score_number(signals, campaign_risk, settings.report_grace_days, settings.report_half_life_days)
+    number.reports_count = len(signals)
+    number.unique_reporters_count = len({s.device_id for s in signals})
+    changed = number.risk_score != result.score or number.risk_level != result.level.value
+    if changed:
+        number.risk_score = result.score
+        number.risk_level = result.level.value
+        number.updated_at = utcnow()
+    return changed
+
+
+BATCH_SIZE = 500
+
+
+async def recalculate_numbers(session: AsyncSession, numbers: list[Number]) -> int:
+    """Batched `recalculate_number`: two queries per 500 numbers instead of two per number."""
+    campaign_risk = dict((await session.execute(select(Campaign.id, Campaign.risk_score))).all())
+    now = utcnow()
+    changed = 0
+    for start in range(0, len(numbers), BATCH_SIZE):
+        chunk = numbers[start : start + BATCH_SIZE]
+        signals: dict[int, list[ReportSignal]] = {n.id: [] for n in chunk}
+        rows = await session.execute(
+            select(Report.number_id, Report.device_id, Report.category, Report.actions, Device.reputation, Report.created_at)
+            .join(Device, Device.id == Report.device_id)
+            .where(Report.number_id.in_(list(signals)))
+            .order_by(Report.created_at, Report.id)
+        )
+        for nid, d, c, a, r, created in rows.all():
+            signals[nid].append(ReportSignal(str(d), c, tuple(a or ()), float(r), (now - created).total_seconds() / 86400))
+        for number in chunk:
+            risk = campaign_risk.get(number.campaign_id) if number.campaign_id is not None else None
+            changed += _apply_result(number, signals[number.id], float(risk) if risk is not None else None)
+    return changed
 
 
 async def recalculate_number(session: AsyncSession, number: Number) -> bool:
@@ -128,16 +198,7 @@ async def recalculate_number(session: AsyncSession, number: Number) -> bool:
         campaign = await session.get(Campaign, number.campaign_id)
         campaign_risk = float(campaign.risk_score) if campaign else None
 
-    result = score_number(signals, campaign_risk)
-    number.reports_count = len(signals)
-    number.unique_reporters_count = len({s.device_id for s in signals})
-
-    changed = number.risk_score != result.score or number.risk_level != result.level.value
-    if changed:
-        number.risk_score = result.score
-        number.risk_level = result.level.value
-        number.updated_at = utcnow()
-    return changed
+    return _apply_result(number, signals, campaign_risk)
 
 
 async def apply_feedback_to_reporters(

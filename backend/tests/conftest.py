@@ -47,3 +47,9 @@ async def auth_headers(client: AsyncClient, device_id: uuid.UUID | None = None) 
     resp = await client.post("/api/v1/auth/device", json={"device_id": str(device_id or uuid.uuid4())})
     assert resp.status_code == 200, resp.text
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+
+async def admin_headers(client: AsyncClient) -> dict[str, str]:
+    resp = await client.post("/api/v1/admin/token", headers={"X-Admin-Key": "test-admin-key"})
+    assert resp.status_code == 200, resp.text
+    return {"Authorization": f"Bearer {resp.json()['access_token']}"}

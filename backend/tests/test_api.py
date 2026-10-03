@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import select
 
 from app.models import Device, Report
-from tests.conftest import auth_headers
+from tests.conftest import admin_headers, auth_headers
 
 API = "/api/v1"
 
@@ -131,9 +131,7 @@ async def test_sync_reports_removed_numbers(client):
     await report(client, headers, phone="+37369000001")
     since = (await client.get(f"{API}/sync", headers=headers)).json()["server_time"]
 
-    resp = await client.post(
-        f"{API}/admin/numbers/+37369000001/remove", headers={"X-Admin-Key": "test-admin-key"}
-    )
+    resp = await client.post(f"{API}/admin/numbers/+37369000001/remove", headers=await admin_headers(client))
     assert resp.status_code == 200
 
     delta = (await client.get(f"{API}/sync", params={"since": since}, headers=headers)).json()
@@ -271,8 +269,7 @@ async def test_recalculate_all_updates_reputations(client, session):
     reporter.reputation = 1.0
     await session.commit()
 
-    admin_headers = {"X-Admin-Key": "test-admin-key"}
-    resp = await client.post(f"{API}/admin/recalculate", headers=admin_headers)
+    resp = await client.post(f"{API}/admin/recalculate", headers=await admin_headers(client))
     assert resp.status_code == 200
 
     await session.refresh(reporter)
@@ -316,16 +313,36 @@ async def test_campaign_flow_and_listing(client):
 async def test_admin_stats(client):
     headers = await auth_headers(client)
     await report(client, headers)
-    assert (await client.get(f"{API}/admin/stats")).status_code == 403
-    assert (await client.get(f"{API}/admin/stats", headers={"X-Admin-Key": "nope"})).status_code == 403
-    stats = (await client.get(f"{API}/admin/stats", headers={"X-Admin-Key": "test-admin-key"})).json()
+    admin = await admin_headers(client)
+    stats = (await client.get(f"{API}/admin/stats", headers=admin)).json()
     assert stats["numbers_count"] == 1
     assert stats["reports_count"] == 1
     assert stats["campaigns_count"] == 0
     assert stats["by_risk_level"]["LOW"] == 1
 
-    recalc = await client.post(f"{API}/admin/recalculate", headers={"X-Admin-Key": "test-admin-key"})
+    recalc = await client.post(f"{API}/admin/recalculate", headers=admin)
     assert recalc.status_code == 200
+
+
+async def test_admin_requires_admin_jwt(client):
+    device = await auth_headers(client)
+    # No token, a bare admin key, or a device token are all refused.
+    assert (await client.get(f"{API}/admin/stats")).status_code == 401
+    assert (await client.get(f"{API}/admin/stats", headers={"X-Admin-Key": "test-admin-key"})).status_code == 401
+    forbidden = await client.get(f"{API}/admin/stats", headers=device)
+    assert forbidden.status_code == 403
+    assert forbidden.json()["error"]["code"] == "FORBIDDEN"
+    # The key only works for getting a token, and a wrong key gets nothing.
+    assert (await client.post(f"{API}/admin/token", headers={"X-Admin-Key": "nope"})).status_code == 403
+    token = await client.post(f"{API}/admin/token", headers={"X-Admin-Key": "test-admin-key"})
+    assert token.status_code == 200
+    assert token.json()["expires_in"] == 12 * 3600
+
+
+async def test_admin_token_cannot_act_as_device(client):
+    admin = await admin_headers(client)
+    resp = await client.post(f"{API}/check-number", json={"phone": "+37369123456"}, headers=admin)
+    assert resp.status_code == 401
 
 
 async def test_report_rate_limit_per_device(client):
@@ -363,8 +380,81 @@ def test_openapi_operation_ids_are_short_and_unique():
         "get_campaign",
         "create_feedback",
         "get_stats",
+        "admin_token",
+        "list_reports",
+        "activity",
         "recalculate",
         "remove_number",
         "restore_number",
         "health",
     }
+
+
+async def test_sync_is_gzipped_for_clients_that_accept_it(client):
+    headers = await auth_headers(client)
+    for i in range(30):
+        await report(client, headers, phone=f"+3736900{i:04d}")
+    resp = await client.get(f"{API}/sync", headers={**headers, "Accept-Encoding": "gzip"})
+    assert resp.status_code == 200
+    assert resp.headers.get("content-encoding") == "gzip"
+    assert len(resp.json()["items"]) == 30  # httpx decompresses transparently
+
+
+async def test_admin_reports_feed(client):
+    h1, h2 = await auth_headers(client), await auth_headers(client)
+    await report(client, h1, phone="+37369000001", category="BANK", actions=["OTP"], free_text="просили код")
+    await report(client, h2, phone="+37369000001", category="BANK", actions=["OTP"])
+    await report(client, h1, phone="+37368000002", category="POLICE", actions=["THREAT"])
+    admin = await admin_headers(client)
+
+    feed = (await client.get(f"{API}/admin/reports", headers=admin)).json()
+    assert feed["total"] == 3
+    assert feed["items"][0]["phone"] == "+37368000002"  # newest first
+    assert sum(i["has_free_text"] for i in feed["items"]) == 1
+    assert "free_text" not in feed["items"][0]
+
+    bank = (await client.get(f"{API}/admin/reports", params={"category": "BANK"}, headers=admin)).json()
+    assert bank["total"] == 2 and {i["category"] for i in bank["items"]} == {"BANK"}
+    by_phone = (await client.get(f"{API}/admin/reports", params={"phone": "068 000 002"}, headers=admin)).json()
+    assert by_phone["total"] == 1
+    page = (await client.get(f"{API}/admin/reports", params={"limit": 1, "offset": 1}, headers=admin)).json()
+    assert len(page["items"]) == 1 and page["total"] == 3
+
+
+async def test_admin_activity(client):
+    h1, h2 = await auth_headers(client), await auth_headers(client)
+    await report(client, h1, phone="+37369000001")
+    await report(client, h2, phone="+37369000001")
+    await report(client, h1, phone="+37368000002")
+
+    days = (await client.get(f"{API}/admin/activity", params={"days": 7}, headers=await admin_headers(client))).json()["days"]
+    assert len(days) == 7
+    assert [d["date"] for d in days] == sorted(d["date"] for d in days)
+    assert days[-1] == {"date": days[-1]["date"], "reports": 3, "reporters": 2, "new_numbers": 2}
+    assert all(d["reports"] == 0 for d in days[:-1])
+
+
+async def test_report_ageing_downgrades_number_in_db(client, session):
+    from datetime import timedelta
+
+    from app.jobs import recalculate_all
+    from app.models import utcnow
+
+    devices = [await auth_headers(client) for _ in range(11)]
+    for h in devices:
+        await report(client, h, phone="+37369000001")
+    check = lambda: client.post(f"{API}/check-number", json={"phone": "+37369000001"}, headers=devices[0])  # noqa: E731
+    assert (await check()).json()["risk_level"] == "HIGH"
+
+    # Fast-forward: every report becomes 4 months old.
+    for r in (await session.scalars(select(Report))).all():
+        r.created_at = utcnow() - timedelta(days=120)
+    await session.commit()
+    await recalculate_all(session)
+    assert (await check()).json()["risk_level"] == "MEDIUM"
+
+    for r in (await session.scalars(select(Report))).all():
+        r.created_at = utcnow() - timedelta(days=400)
+    await session.commit()
+    await recalculate_all(session)
+    assert (await check()).json()["risk_level"] == "UNKNOWN"
