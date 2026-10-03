@@ -60,6 +60,28 @@ docker compose up --build -d  # api :8000, dashboard :3000, postgres :5432, redi
 docker compose exec api python -m scripts.seed --reset
 ```
 
+To populate the database through FastAPI instead of accessing it directly, use the
+endpoint loader from the repository root:
+
+```bash
+./backend/scripts/seed_api.sh 100
+# Or override values from .env for one run:
+# API_URL=http://localhost:8000/api/v1 PARALLELISM=8 VERBOSE=1 ./backend/scripts/seed_api.sh 1000
+```
+
+The script automatically reads `.env` from the repository root. It uses
+`API_URL`, `PARALLELISM`, and `VERBOSE` when present; otherwise it derives the API
+URL from `NEXT_PUBLIC_API_URL` and appends `/api/v1`. Command-line environment
+assignments take precedence over values loaded from `.env`.
+
+It registers temporary devices through `/auth/device`, generates each random
+number immediately before submitting it through `/report`, and creates a separate
+device for every 10 reports so the normal per-device rate limit is respected.
+Device registration is deliberately paced and retries rate-limit responses, so
+large loads may take several minutes. By default it prints each request, response,
+and `curl` transfer trace; set `VERBOSE=0` for concise output.
+`curl`, `jq`, and `shuf` are required.
+
 Миграции применяются при старте контейнера (`alembic upgrade head`). Swagger лежит на
 http://localhost:8000/docs, OpenAPI-схема на http://localhost:8000/openapi.json.
 
