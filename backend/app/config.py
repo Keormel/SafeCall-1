@@ -35,6 +35,7 @@ class Settings(BaseSettings):
 
     rate_limit_enabled: bool = True
     rate_limit_report: str = "10/hour"
+    rate_limit_feedback: str = "20/hour"
     rate_limit_check: str = "60/minute"
     rate_limit_default: str = "120/minute"
 

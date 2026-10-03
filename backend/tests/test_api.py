@@ -155,8 +155,21 @@ async def test_feedback(client):
     resp = await client.post(f"{API}/feedback", json={"phone": "+37369000001", "was_correct": True}, headers=headers)
     assert resp.status_code == 404
     await report(client, headers, phone="+37369000001")
-    resp = await client.post(f"{API}/feedback", json={"phone": "+37369000001", "was_correct": True}, headers=headers)
+    reviewer = await auth_headers(client)
+    resp = await client.post(
+        f"{API}/feedback", json={"phone": "+37369000001", "was_correct": True}, headers=reviewer
+    )
     assert resp.json() == {"status": "accepted"}
+
+
+async def test_feedback_rejects_self_review(client):
+    headers = await auth_headers(client)
+    await report(client, headers, phone="+37369000001")
+    resp = await client.post(
+        f"{API}/feedback", json={"phone": "+37369000001", "was_correct": True}, headers=headers
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "SELF_FEEDBACK"
 
 
 async def test_feedback_increases_reporter_reputation(client, session):
