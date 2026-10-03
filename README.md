@@ -16,6 +16,9 @@ cp .env.example .env
 docker compose up --build
 ```
 
+The dashboard runs in Next.js development mode with hot reload enabled. Edit
+files under `dashboard/` and refreshes are applied automatically.
+
 The API health endpoint is available at <http://localhost:8000/health>, and the
 admin dashboard at <http://localhost:3000>.
 
