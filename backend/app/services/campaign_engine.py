@@ -293,8 +293,8 @@ async def discover_campaigns(session: AsyncSession) -> list[Campaign]:
 
     created: list[Campaign] = []
     for cluster in cluster_numbers(candidates):
-        fp = sorted(cluster.fingerprint)
-        campaign = Campaign(name=campaign_name(fp), type=campaign_type(fp), fingerprint=fp)
+        tags = sorted(cluster.fingerprint)
+        campaign = Campaign(name=campaign_name(tags), type=campaign_type(tags), fingerprint=tags)
         session.add(campaign)
         await session.flush()
         for number_id, similarity in cluster.members:

@@ -128,7 +128,7 @@ async def seed(reset_first: bool, seed_value: int) -> None:
             stats["ordinary"] += 1
 
         await session.flush()
-        changed, created = await recalculate_all(session)
+        _, created = await recalculate_all(session)
 
         some_numbers = (await session.scalars(select(Number).limit(10))).all()
         for number in some_numbers:

@@ -6,8 +6,8 @@ from sqlalchemy import select
 from app.models import Campaign, Device, Number, RiskLevel
 from app.services.campaign_engine import (
     best_campaign_match,
-    cluster_numbers,
     campaign_name,
+    cluster_numbers,
     dominant_fingerprint,
     jaccard,
 )

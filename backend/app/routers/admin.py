@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_session
 from app.errors import AppError
 from app.jobs import recalculate_all
-from app.models import Campaign, Device, Feedback, Number, Report, RiskLevel, utcnow
 from app.limiter import limiter
+from app.models import Campaign, Device, Feedback, Number, Report, RiskLevel, utcnow
 from app.schemas import (
     ActivityDay,
     ActivityResponse,
@@ -20,8 +20,8 @@ from app.schemas import (
     RemoveNumberResult,
     TokenResponse,
 )
-from app.services.fingerprint import Category
 from app.security import create_admin_token, require_admin, verify_admin_key
+from app.services.fingerprint import Category
 from app.services.report_service import get_number, normalize_or_400
 
 token_router = APIRouter(prefix="/admin", tags=["admin"])

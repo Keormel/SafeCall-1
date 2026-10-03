@@ -3,9 +3,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.routing import APIRoute
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.routing import APIRoute
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import get_settings
@@ -23,7 +23,10 @@ logging.basicConfig(
 
 
 def operation_id(route: APIRoute) -> str:
-    """operationId = endpoint function name, so generated clients get `checkNumber`, not `checkNumberApiV1CheckNumberPost`."""
+    """operationId = endpoint function name.
+
+    Generated clients then get `checkNumber`, not `checkNumberApiV1CheckNumberPost`.
+    """
     return route.name
 
 

@@ -58,7 +58,7 @@ async def sync_numbers(
     full_snapshot = since is None
 
     stmt = select(Number, Campaign.type).outerjoin(Campaign, Campaign.id == Number.campaign_id)
-    if full_snapshot:
+    if since is None:
         # Snapshot: only live, scored numbers. Unknown numbers are never shipped.
         stmt = stmt.where(Number.is_removed.is_(False), Number.risk_level != RiskLevel.UNKNOWN.value)
     else:

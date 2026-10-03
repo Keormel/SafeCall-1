@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "description": "Shared vectors for Python (backend), Dart (app) and Kotlin (call screening). Every side must produce exactly these results. Risk expectations are derived from the business rules, not from any implementation.",
+  "default_region": "MD",
+  "phones": [
+    {"input": "+373 69 123 456", "e164": "+37369123456"},
+    {"input": "069123456", "e164": "+37369123456", "note": "national format with trunk 0"},
+    {"input": "69123456", "e164": "+37369123456", "note": "national format without trunk 0"},
+    {"input": "37369123456", "e164": "+37369123456", "note": "country code without plus"},
+    {"input": "0037369123456", "e164": "+37369123456", "note": "international 00 prefix"},
+    {"input": "+373-69-123-456", "e164": "+37369123456"},
+    {"input": "(069) 123-456", "e164": "+37369123456"},
+    {"input": "069 12 34 56", "e164": "+37369123456"},
+    {"input": "+373 (69) 12-34-56", "e164": "+37369123456"},
+    {"input": " +37369123456 ", "e164": "+37369123456", "note": "surrounding spaces"},
+    {"input": "tel:+37369123456", "e164": "+37369123456", "note": "tel: URI as Android may pass it"},
+    {"input": "0 69 123 456", "e164": "+37369123456"},
+    {"input": "+373 22 123 456", "e164": "+37322123456", "note": "Chisinau landline"},
+    {"input": "+79161234567", "e164": "+79161234567", "note": "Russia"},
+    {"input": "+40721234567", "e164": "+40721234567", "note": "Romania"},
+    {"input": "+1 650 253 0000", "e164": "+16502530000", "note": "USA"},
+    {"input": "０６９１２３４５６", "e164": "+37369123456", "note": "full-width digits map to the same number"},
+    {"input": "abc", "e164": null},
+    {"input": "123", "e164": null},
+    {"input": "", "e164": null},
+    {"input": "+3736912345678901", "e164": null, "note": "too long"},
+    {"input": "+373691234567", "e164": null, "note": "one digit too many for MD"},
+    {"input": "069123456'; DROP TABLE numbers;--", "e164": null, "note": "trailing junk is rejected, not silently stripped"},
+    {"input": "+37369123456 OR 1=1", "e164": null},
+    {"input": "069123456<script>", "e164": null},
+    {"input": "112", "e164": null, "note": "short service numbers have no E.164 form"},
+    {"input": "900", "e164": null}
+  ],
+  "log_masking": [
+    {"input": "+37369123456", "masked": "+3736*****56"},
+    {"input": "+16502530000", "masked": "+1650*****00"}
+  ],
+  "jaccard": [
+    {"a": ["BANK", "OTP"], "b": ["BANK", "OTP"], "value": 1.0},
+    {"a": ["BANK", "OTP", "URGENCY"], "b": ["BANK", "OTP"], "value": 0.6667},
+    {"a": ["BANK"], "b": ["POLICE"], "value": 0.0},
+    {"a": [], "b": [], "value": 0.0},
+    {"a": ["BANK", "OTP", "URGENCY", "CARD_DATA", "TRANSFER", "THREAT", "INSTALL_APP", "SUSPICIOUS_TRANSACTION"],
+     "b": ["BANK", "OTP", "URGENCY", "CARD_DATA", "TRANSFER", "THREAT", "INSTALL_APP", "POLICE", "DELIVERY"],
+     "value": 0.7, "note": "7/10: exactly at the campaign threshold"}
+  ],
+  "risk": [
+    {"name": "no data", "reporters": 0, "campaign_risk": null, "score": 0, "level": "UNKNOWN"},
+    {"name": "one reporter", "reporters": 1, "campaign_risk": null, "score": 10, "level": "LOW"},
+    {"name": "two identical reporters", "reporters": 2, "campaign_risk": null, "score": 30, "level": "MEDIUM"},
+    {"name": "three identical reporters", "reporters": 3, "campaign_risk": null, "score": 40, "level": "MEDIUM"},
+    {"name": "five identical reporters", "reporters": 5, "campaign_risk": null, "score": 40, "level": "MEDIUM"},
+    {"name": "six identical reporters", "reporters": 6, "campaign_risk": null, "score": 50, "level": "MEDIUM"},
+    {"name": "ten identical reporters", "reporters": 10, "campaign_risk": null, "score": 50, "level": "MEDIUM"},
+    {"name": "eleven identical reporters", "reporters": 11, "campaign_risk": null, "score": 60, "level": "HIGH"},
+    {"name": "two reporters in a strong campaign are capped", "reporters": 2, "campaign_risk": 100, "score": 59, "level": "MEDIUM"},
+    {"name": "three reporters in a strong campaign", "reporters": 3, "campaign_risk": 100, "score": 70, "level": "HIGH"},
+    {"name": "campaign link only", "reporters": 0, "campaign_risk": 80, "score": 24, "level": "LOW"}
+  ]
+}

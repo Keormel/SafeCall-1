@@ -4,10 +4,6 @@ import pytest
 
 from app.models import Device, Feedback, Number, Report, RiskLevel
 from app.services.risk_engine import (
-    FEEDBACK_CORRECT_DELTA,
-    FEEDBACK_INCORRECT_DELTA,
-    MAX_REPUTATION,
-    MIN_REPUTATION,
     ReportSignal,
     apply_feedback_to_reporters,
     campaign_points,

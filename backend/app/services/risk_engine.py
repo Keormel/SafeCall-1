@@ -1,7 +1,7 @@
 """Rule-based risk scoring. `score_number` is a pure function; `recalculate_number` wires it to the DB."""
 
 import uuid
-from collections import Counter
+from collections import defaultdict
 from dataclasses import dataclass, field
 
 from sqlalchemy import func, select
@@ -72,7 +72,7 @@ def similarity_points(signals: list[ReportSignal]) -> int:
     weighted = [s for s in signals if s.reputation > 0]
     if len(weighted) < 2:
         return 0
-    buckets: Counter[tuple[str, tuple[str, ...]]] = Counter()
+    buckets: defaultdict[tuple[str, tuple[str, ...]], float] = defaultdict(float)
     for s in weighted:
         buckets[(s.category, tuple(sorted(set(s.actions))))] += s.reputation
     total = sum(buckets.values())
@@ -177,13 +177,21 @@ async def recalculate_numbers(session: AsyncSession, numbers: list[Number]) -> i
         chunk = numbers[start : start + BATCH_SIZE]
         signals: dict[int, list[ReportSignal]] = {n.id: [] for n in chunk}
         rows = await session.execute(
-            select(Report.number_id, Report.device_id, Report.category, Report.actions, Device.reputation, Report.created_at)
+            select(
+                Report.number_id,
+                Report.device_id,
+                Report.category,
+                Report.actions,
+                Device.reputation,
+                Report.created_at,
+            )
             .join(Device, Device.id == Report.device_id)
             .where(Report.number_id.in_(list(signals)))
             .order_by(Report.created_at, Report.id)
         )
         for nid, d, c, a, r, created in rows.all():
-            signals[nid].append(ReportSignal(str(d), c, tuple(a or ()), float(r), (now - created).total_seconds() / 86400))
+            age_days = (now - created).total_seconds() / 86400
+            signals[nid].append(ReportSignal(str(d), c, tuple(a or ()), float(r), age_days))
         for number in chunk:
             risk = campaign_risk.get(number.campaign_id) if number.campaign_id is not None else None
             changed += _apply_result(number, signals[number.id], float(risk) if risk is not None else None)

@@ -130,7 +130,7 @@ class FingerprintCache:
             return None
         if raw is None:
             return None
-        value = parse_llm_response(raw)
+        value = parse_llm_response(raw if isinstance(raw, str) else raw.decode())
         if value is not None:
             self.local.set(key, value)
         return value

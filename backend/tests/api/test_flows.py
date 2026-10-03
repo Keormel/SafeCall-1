@@ -194,7 +194,7 @@ async def test_feedback_decreases_reporter_reputation_and_zeroes_score(client, s
     assert device.reputation == 1.0
 
     # 5 different devices report false positive (was_correct=False)
-    for i in range(5):
+    for _ in range(5):
         h_reviewer = await auth_headers(client, uuid.uuid4())
         resp = await client.post(f"{API}/feedback", json={"phone": phone, "was_correct": False}, headers=h_reviewer)
         assert resp.status_code == 200
@@ -292,7 +292,7 @@ async def test_campaign_flow_and_listing(client):
 
     # Demo scenario: unknown -> 1 report (LOW) -> 2nd similar report -> joins campaign, MEDIUM.
     new = "+37378999999"
-    check = lambda: client.post(f"{API}/check-number", json={"phone": new}, headers=devices[0])  # noqa: E731
+    check = lambda: client.post(f"{API}/check-number", json={"phone": new}, headers=devices[0])
     assert (await check()).json()["risk_level"] == "UNKNOWN"
     await report(client, devices[6], phone=new)
     assert (await check()).json()["risk_level"] == "LOW"
@@ -444,7 +444,7 @@ async def test_report_ageing_downgrades_number_in_db(client, session):
     devices = [await auth_headers(client) for _ in range(11)]
     for h in devices:
         await report(client, h, phone="+37369000001")
-    check = lambda: client.post(f"{API}/check-number", json={"phone": "+37369000001"}, headers=devices[0])  # noqa: E731
+    check = lambda: client.post(f"{API}/check-number", json={"phone": "+37369000001"}, headers=devices[0])
     assert (await check()).json()["risk_level"] == "HIGH"
 
     # Fast-forward: every report becomes 4 months old.

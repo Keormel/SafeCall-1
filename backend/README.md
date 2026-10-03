@@ -90,12 +90,13 @@ uvicorn app.main:app --reload
 
 ### Тесты
 
-Тесты используют временную SQLite-базу и замоканный Gemini, поэтому ни Postgres, ни ключ API им не нужны.
-Рабочая база — PostgreSQL; прогон тестов на ней стоит в списке задач.
+Подробности, маркеры, нагрузка, демо-скрипт и список найденных багов — в [tests/README.md](tests/README.md).
+Тестовые зависимости не входят в Docker-образ, тесты запускаются локально или в CI.
 
 ```bash
-cd backend && pytest -q          # локально
-docker compose exec api pytest -q   # внутри контейнера
+cd backend && pip install -r requirements-dev.txt
+pytest -m "unit or api"   # быстрый набор, ~16 с
+pytest                    # всё: unit, api, security, perf, e2e
 ```
 
 ### Генерация Dart-клиента
