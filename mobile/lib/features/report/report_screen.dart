@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
-import '../../core/phone_utils.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
 import 'report_controller.dart';
@@ -92,7 +91,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                 children: [
                   RiskChip(widget.args.level),
                   const SizedBox(height: 10),
-                  Text(maskPhone(widget.args.phone), style: AppText.headline),
+                  Text(widget.args.phone, style: AppText.headline),
                   const SizedBox(height: 18),
                   Text(
                     l.reportQuestion,

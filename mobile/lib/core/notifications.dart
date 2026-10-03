@@ -32,7 +32,8 @@ class Notifications {
   /// On Android the call notifications are drawn natively (custom layout with the "!" button),
   /// the same code the call-screening service uses for real calls.
   static const _native = MethodChannel('safecall/native');
-  static bool get _isAndroid => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  static bool get _isAndroid =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   /// Set by the app to navigate when a notification is tapped.
   void Function(String location)? onOpen;
@@ -45,7 +46,9 @@ class Notifications {
     final l = lookupAppLocalizations(Locale(languageCode));
     await n._plugin.initialize(
       settings: InitializationSettings(
-        android: const AndroidInitializationSettings('@mipmap/ic_launcher'),
+        android: const AndroidInitializationSettings(
+          '@drawable/ic_stat_safecall',
+        ),
         // Permission is asked during onboarding, with an explanation, not at first launch.
         iOS: DarwinInitializationSettings(
           requestAlertPermission: false,

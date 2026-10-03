@@ -60,8 +60,9 @@ class NotificationHelper(private val context: Context) {
     fun showScamWarning(eventId: Int, phone: String, lang: String) {
         val s = strings(lang)
         ensureChannels(lang)
+        manager.cancelAll() // a new call: older SafeCall notifications are no longer relevant
         val notification = NotificationCompat.Builder(context, CH_WARNINGS)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_safecall)
             .setLargeIcon(BitmapFactory.decodeResource(context.resources, R.drawable.alert_red))
             .setContentTitle(s.scamTitle)
             .setContentText(phone)
@@ -84,7 +85,9 @@ class NotificationHelper(private val context: Context) {
     fun showPostCall(eventId: Int, phone: String, level: String, lang: String) {
         val s = strings(lang)
         ensureChannels(lang)
-        manager.cancel(eventId * 2) // the in-call warning is no longer relevant
+        // Only the latest call's question stays: older ones would be bundled by Android into a group
+        // whose summary opens the app instead of the report.
+        manager.cancelAll()
         val id = eventId * 2 + 1
         val scam = Risk.isWarning(level)
         val hint = if (scam) s.postCallScam else s.postCallUnknown
@@ -96,7 +99,7 @@ class NotificationHelper(private val context: Context) {
         // Standard template on purpose: custom RemoteViews get as little as 48dp (Android 12+) and
         // MIUI clips them. The "!" is the large icon, which every skin draws on the right.
         val notification = NotificationCompat.Builder(context, CH_REPORTS)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_safecall)
             .setLargeIcon(
                 BitmapFactory.decodeResource(
                     context.resources,
@@ -119,6 +122,9 @@ class NotificationHelper(private val context: Context) {
             .build()
         notify(id, notification)
     }
+
+    /** The call was answered: the reminder over the call screen replaces the in-call warning. */
+    fun cancelScamWarning(eventId: Int) = manager.cancel(eventId * 2)
 
     /** Deep link into the Flutter router (handled by go_router via flutter_deeplinking_enabled). */
     private fun openApp(location: String, requestCode: Int): PendingIntent {

@@ -21,6 +21,34 @@ class NativeBridge {
   /// Asks the OS to grant protection; re-check [isProtectionEnabled] when the app resumes.
   Future<void> requestProtection() => _invoke('requestProtection');
 
+  /// Android: whether the warning card may be drawn over the incoming-call screen.
+  Future<bool> canDrawOverlays() async {
+    try {
+      return await _channel.invokeMethod<bool>('canDrawOverlays') ?? false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  /// Android: Xiaomi/MIUI needs its own pop-up and lock-screen switches.
+  Future<bool> isXiaomi() async {
+    try {
+      return await _channel.invokeMethod<bool>('isXiaomi') ?? false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  /// Opens SafeCall's MIUI permission page (pop-ups, pop-ups in background, lock screen).
+  Future<void> openXiaomiPermissions() => _invoke('openXiaomiPermissions');
+
+  /// Android: opens "Display over other apps" for SafeCall.
+  Future<void> requestOverlay() => _invoke('requestOverlay');
+
   /// Opens the system page where protection can be turned on or off.
   Future<void> openProtectionSettings() => _invoke('openRoleSettings');
 

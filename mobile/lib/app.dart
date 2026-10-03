@@ -180,6 +180,7 @@ class _SafeCallAppState extends ConsumerState<SafeCallApp> {
     _lifecycle = AppLifecycleListener(
       onResume: () {
         ref.read(protectionProvider.notifier).refresh();
+        ref.read(overlayProvider.notifier).refresh();
         ref.read(syncControllerProvider.notifier).syncIfStale();
         ref.invalidate(callEventsProvider);
       },

@@ -4,6 +4,8 @@
     <!-- Only to notice when a call ends (for the post-call question); the number comes from call screening. -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Warning card over the incoming-call screen (notifications are hidden behind the call UI). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- Hackathon: the backend runs over plain http on a laptop. Switch to https for production. -->
     <application
         android:label="SafeCall"
@@ -39,6 +41,17 @@
                 <data android:scheme="safecall" android:host="open" />
             </intent-filter>
         </activity>
+
+        <!-- Scam-warning card over the lock screen (overlay windows are not drawn there). -->
+        <activity
+            android:name=".CallAlertActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:taskAffinity="com.safecall.safecall.alert"
+            android:theme="@style/CallAlertTheme"
+            android:turnScreenOn="true" />
 
         <service
             android:name=".SafeCallScreeningService"

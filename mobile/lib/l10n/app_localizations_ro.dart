@@ -476,4 +476,20 @@ class AppLocalizationsRo extends AppLocalizations {
 
   @override
   String get simulateCallButton => 'Sună';
+
+  @override
+  String get overlayTitle => 'Avertisment peste apel';
+
+  @override
+  String get overlayOn => 'Activat';
+
+  @override
+  String get overlayOff => 'Dezactivat — apăsați pentru a activa';
+
+  @override
+  String get xiaomiSetup => 'Configurare pentru Xiaomi';
+
+  @override
+  String get xiaomiSetupHint =>
+      'Ferestre pop-up, pop-up în fundal și ecranul de blocare';
 }

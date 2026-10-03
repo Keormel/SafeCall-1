@@ -475,4 +475,20 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get simulateCallButton => 'Позвонить';
+
+  @override
+  String get overlayTitle => 'Предупреждение поверх звонка';
+
+  @override
+  String get overlayOn => 'Включено';
+
+  @override
+  String get overlayOff => 'Выключено — нажмите, чтобы включить';
+
+  @override
+  String get xiaomiSetup => 'Настроить для Xiaomi';
+
+  @override
+  String get xiaomiSetupHint =>
+      'Всплывающие окна, окна в фоне и экран блокировки';
 }

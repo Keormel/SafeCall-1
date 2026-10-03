@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 
 import '../../core/models.dart';
 import '../../core/notifications.dart';
-import '../../core/phone_utils.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
 
@@ -30,7 +29,7 @@ class CallTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  maskPhone(event.phone),
+                  event.phone,
                   style: AppText.body.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 2),

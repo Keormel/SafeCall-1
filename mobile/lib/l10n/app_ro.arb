@@ -193,5 +193,10 @@
   "simulateEnded": "Apel încheiat — vedeți notificarea",
   "simulateScamPreset": "Escroc din bază",
   "simulateUnknownPreset": "Număr nou",
-  "simulateCallButton": "Sună"
+  "simulateCallButton": "Sună",
+  "overlayTitle": "Avertisment peste apel",
+  "overlayOn": "Activat",
+  "overlayOff": "Dezactivat — apăsați pentru a activa",
+  "xiaomiSetup": "Configurare pentru Xiaomi",
+  "xiaomiSetupHint": "Ferestre pop-up, pop-up în fundal și ecranul de blocare"
 }

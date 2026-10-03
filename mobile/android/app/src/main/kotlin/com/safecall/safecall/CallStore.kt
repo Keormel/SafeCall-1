@@ -16,7 +16,13 @@ object Risk {
 }
 
 /** A call that was screened and is waiting for its end to ask "was it a scammer?". */
-data class ScreenedCall(val eventId: Int, val phone: String, val level: String, val startedAt: Long)
+data class ScreenedCall(
+    val eventId: Int,
+    val phone: String,
+    val level: String,
+    val startedAt: Long,
+    val campaignType: String? = null,
+)
 
 /**
  * Native side of the shared on-device data, usable while the Flutter engine is not running:
@@ -44,6 +50,7 @@ class CallStore(private val context: Context) {
     fun screen(rawPhone: String): ScreenedCall {
         val phone = normalize(rawPhone)
         var level = Risk.UNKNOWN
+        var campaignType: String? = null
         var eventId = (System.currentTimeMillis() / 1000 % 100_000).toInt() // fallback id if no DB yet
         val file = dbFile
         if (file.exists()) {
@@ -52,8 +59,11 @@ class CallStore(private val context: Context) {
                 file.path, null,
                 SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING,
             ).use { db ->
-                db.rawQuery("SELECT risk_level FROM numbers WHERE phone = ?", arrayOf(phone)).use { c ->
-                    if (c.moveToFirst()) level = c.getString(0) ?: Risk.UNKNOWN
+                db.rawQuery("SELECT risk_level, campaign_type FROM numbers WHERE phone = ?", arrayOf(phone)).use { c ->
+                    if (c.moveToFirst()) {
+                        level = c.getString(0) ?: Risk.UNKNOWN
+                        campaignType = c.getString(1)
+                    }
                 }
                 db.compileStatement("INSERT INTO call_events (phone, level, ts, reported) VALUES (?, ?, ?, 0)").use {
                     it.bindString(1, phone)
@@ -63,7 +73,18 @@ class CallStore(private val context: Context) {
                 }
             }
         }
-        return ScreenedCall(eventId, phone, level, System.currentTimeMillis())
+        return ScreenedCall(eventId, phone, level, System.currentTimeMillis(), campaignType)
+    }
+
+    /** Scheme of a known number (for the simulate-call path, which only has the phone). */
+    fun campaignTypeOf(phone: String): String? {
+        val file = dbFile
+        if (!file.exists()) return null
+        return SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            db.rawQuery("SELECT campaign_type FROM numbers WHERE phone = ?", arrayOf(normalize(phone))).use { c ->
+                if (c.moveToFirst()) c.getString(0) else null
+            }
+        }
     }
 
     fun savePending(call: ScreenedCall) {
@@ -73,6 +94,23 @@ class CallStore(private val context: Context) {
             .putString("level", call.level)
             .putLong("ts", call.startedAt)
             .apply()
+    }
+
+    /** Forgets a screened call that is not the one ringing now (it was screened long ago). */
+    fun dropStalePending(maxAgeMs: Long) {
+        val ts = nativePrefs.getLong("ts", 0)
+        if (ts != 0L && System.currentTimeMillis() - ts > maxAgeMs) nativePrefs.edit().clear().apply()
+    }
+
+    /** The call in progress, without consuming it. */
+    fun peekPending(): ScreenedCall? {
+        val phone = nativePrefs.getString("phone", null) ?: return null
+        return ScreenedCall(
+            nativePrefs.getInt("event", 0),
+            phone,
+            nativePrefs.getString("level", Risk.UNKNOWN) ?: Risk.UNKNOWN,
+            nativePrefs.getLong("ts", 0),
+        )
     }
 
     /** The last screened call, once; stale entries (no end seen for hours) are dropped. */

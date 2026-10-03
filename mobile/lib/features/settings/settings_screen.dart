@@ -89,6 +89,40 @@ class SettingsScreen extends ConsumerWidget {
                         },
                       ),
                     ),
+                    if (defaultTargetPlatform == TargetPlatform.android)
+                      CupertinoListTile(
+                        leading: const _IconBox(
+                          icon: CupertinoIcons.exclamationmark_shield_fill,
+                          color: Color(0xFFDC2626),
+                        ),
+                        title: Text(l.overlayTitle),
+                        subtitle: Text(
+                          (ref.watch(overlayProvider).value ?? false)
+                              ? l.overlayOn
+                              : l.overlayOff,
+                        ),
+                        trailing: (ref.watch(overlayProvider).value ?? false)
+                            ? const Icon(
+                                CupertinoIcons.checkmark_alt,
+                                color: Color(0xFF16A34A),
+                              )
+                            : const CupertinoListTileChevron(),
+                        onTap: () =>
+                            ref.read(overlayProvider.notifier).request(),
+                      ),
+                    if (ref.watch(isXiaomiProvider).value ?? false)
+                      CupertinoListTile(
+                        leading: const _IconBox(
+                          icon: CupertinoIcons.wrench_fill,
+                          color: Color(0xFFF59E0B),
+                        ),
+                        title: Text(l.xiaomiSetup),
+                        subtitle: Text(l.xiaomiSetupHint, maxLines: 2),
+                        trailing: const CupertinoListTileChevron(),
+                        onTap: () => ref
+                            .read(nativeBridgeProvider)
+                            .openXiaomiPermissions(),
+                      ),
                   ],
                 ),
                 CupertinoListSection.insetGrouped(

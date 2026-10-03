@@ -967,6 +967,36 @@ abstract class AppLocalizations {
   /// In ru, this message translates to:
   /// **'Позвонить'**
   String get simulateCallButton;
+
+  /// No description provided for @overlayTitle.
+  ///
+  /// In ru, this message translates to:
+  /// **'Предупреждение поверх звонка'**
+  String get overlayTitle;
+
+  /// No description provided for @overlayOn.
+  ///
+  /// In ru, this message translates to:
+  /// **'Включено'**
+  String get overlayOn;
+
+  /// No description provided for @overlayOff.
+  ///
+  /// In ru, this message translates to:
+  /// **'Выключено — нажмите, чтобы включить'**
+  String get overlayOff;
+
+  /// No description provided for @xiaomiSetup.
+  ///
+  /// In ru, this message translates to:
+  /// **'Настроить для Xiaomi'**
+  String get xiaomiSetup;
+
+  /// No description provided for @xiaomiSetupHint.
+  ///
+  /// In ru, this message translates to:
+  /// **'Всплывающие окна, окна в фоне и экран блокировки'**
+  String get xiaomiSetupHint;
 }
 
 class _AppLocalizationsDelegate

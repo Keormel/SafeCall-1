@@ -193,5 +193,10 @@
   "simulateEnded": "Звонок завершён — смотрите уведомление",
   "simulateScamPreset": "Мошенник из базы",
   "simulateUnknownPreset": "Новый номер",
-  "simulateCallButton": "Позвонить"
+  "simulateCallButton": "Позвонить",
+  "overlayTitle": "Предупреждение поверх звонка",
+  "overlayOn": "Включено",
+  "overlayOff": "Выключено — нажмите, чтобы включить",
+  "xiaomiSetup": "Настроить для Xiaomi",
+  "xiaomiSetupHint": "Всплывающие окна, окна в фоне и экран блокировки"
 }

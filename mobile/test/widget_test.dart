@@ -24,18 +24,6 @@ void main() {
     test('empty', () => expect(normalizePhone('  '), ''));
   });
 
-  group('maskPhone', () {
-    test(
-      'Moldovan number',
-      () => expect(maskPhone('+37369123456'), '+373 69 ••• 456'),
-    );
-    test(
-      'other country',
-      () => expect(maskPhone('+4915112345678'), '+491 ••• 678'),
-    );
-    test('too short', () => expect(maskPhone('+123'), '•••'));
-  });
-
   group('ReportRequest.from', () {
     test('bank wins as category, rest become actions', () {
       final r = ReportRequest.from({

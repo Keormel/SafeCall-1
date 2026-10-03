@@ -182,6 +182,26 @@ class ProtectionController extends AsyncNotifier<bool> {
       ref.read(nativeBridgeProvider).openProtectionSettings();
 }
 
+// --- Android: warning card over the call screen
+
+final overlayProvider = AsyncNotifierProvider<OverlayController, bool>(
+  OverlayController.new,
+);
+
+class OverlayController extends AsyncNotifier<bool> {
+  @override
+  Future<bool> build() => ref.read(nativeBridgeProvider).canDrawOverlays();
+
+  Future<void> refresh() async =>
+      state = AsyncData(await ref.read(nativeBridgeProvider).canDrawOverlays());
+
+  Future<void> request() => ref.read(nativeBridgeProvider).requestOverlay();
+}
+
+final isXiaomiProvider = FutureProvider<bool>(
+  (ref) => ref.watch(nativeBridgeProvider).isXiaomi(),
+);
+
 // --- call history
 
 final callEventsProvider = FutureProvider.family<List<CallEvent>, int?>(

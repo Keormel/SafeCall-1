@@ -255,7 +255,7 @@ Future<void> _scrollTo(WidgetTester tester, Finder target) =>
 
 void main() {
   testWidgets(
-    'home shows protection, database status and masked recent calls',
+    'home shows protection, database status and recent calls with full numbers',
     (tester) async {
       _phoneSize(tester);
       await _pump(tester, const HomeScreen());
@@ -264,12 +264,7 @@ void main() {
       expect(find.text('Номеров в базе: 90'), findsOneWidget);
       expect(find.text('ИИ-помощник'), findsOneWidget);
       await _scrollTo(tester, find.text('Последние звонки'));
-      expect(find.text('+373 79 ••• 529'), findsOneWidget);
-      expect(
-        find.text('+37379903529'),
-        findsNothing,
-        reason: 'full numbers must not be shown in lists',
-      );
+      expect(find.text('+37379903529'), findsOneWidget);
     },
   );
 
@@ -450,7 +445,7 @@ void main() {
 
     testWidgets('"Yes" reveals options and sends a report', (tester) async {
       final reports = await pumpReport(tester, RiskLevel.high);
-      expect(find.text('+373 79 ••• 529'), findsOneWidget);
+      expect(find.text('+37379903529'), findsOneWidget);
       expect(find.text('Просили SMS-код'), findsNothing);
 
       await tester.tap(find.text('Да'));
@@ -546,7 +541,7 @@ void main() {
             ),
           ),
         );
-        expect(find.text('+373 69 ••• 777'), findsOneWidget);
+        expect(find.text('+37369000777'), findsOneWidget);
         expect(
           find.text('Представились банком'),
           findsOneWidget,
