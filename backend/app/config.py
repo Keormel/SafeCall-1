@@ -22,8 +22,8 @@ class Settings(BaseSettings):
 
     default_region: str = "MD"
 
-    anthropic_api_key: str | None = None
-    anthropic_model: str = "claude-sonnet-4-6"
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash"
     llm_timeout_seconds: float = 8.0
     llm_cache_size: int = 1024
     free_text_max_length: int = 1000

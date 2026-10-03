@@ -6,7 +6,7 @@ _db_dir = tempfile.mkdtemp(prefix="safecall-test-")
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_db_dir}/test.db"
 os.environ["RATE_LIMIT_ENABLED"] = "false"
 os.environ["SCHEDULER_ENABLED"] = "false"
-os.environ["ANTHROPIC_API_KEY"] = ""
+os.environ["GEMINI_API_KEY"] = ""
 os.environ["ADMIN_API_KEY"] = "test-admin-key"
 os.environ["JWT_SECRET"] = "test-secret"
 

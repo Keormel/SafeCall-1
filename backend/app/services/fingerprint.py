@@ -1,7 +1,7 @@
 """Complaint -> fingerprint (a set of tags from a closed vocabulary).
 
 Checkbox-only reports never touch the LLM. When free text is present it is sent
-to Claude, the answer is validated against the vocabulary, and on any failure we
+to Gemini, the answer is validated against the vocabulary, and on any failure we
 fall back to the checkboxes. The text itself is never persisted, only an HMAC.
 """
 
@@ -152,42 +152,57 @@ def parse_llm_response(raw: str) -> LLMResult | None:
     return LLMResult(category=category, tags=tuple(sorted(tags)))
 
 
-async def anthropic_classifier(text: str) -> LLMResult | None:
-    settings = get_settings()
-    if not settings.anthropic_api_key:
-        return None
+# Structured output: Gemini is constrained to this shape; we still validate it ourselves.
+RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "category": {"type": "string", "enum": sorted(CATEGORY_TAGS)},
+        "tags": {"type": "array", "items": {"type": "string", "enum": sorted(ACTION_TAGS)}},
+    },
+    "required": ["category", "tags"],
+}
 
-    import anthropic
+_gemini_client = None
 
-    client = anthropic.AsyncAnthropic(
-        api_key=settings.anthropic_api_key,
-        timeout=settings.llm_timeout_seconds,
-        max_retries=1,
-    )
-    try:
-        response = await client.messages.create(
-            model=settings.anthropic_model,
-            max_tokens=256,
-            temperature=0,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": f"<complaint>\n{text}\n</complaint>"}],
+
+def _get_gemini_client():
+    global _gemini_client
+    if _gemini_client is None:
+        from google import genai
+        from google.genai import types
+
+        settings = get_settings()
+        _gemini_client = genai.Client(
+            api_key=settings.gemini_api_key,
+            http_options=types.HttpOptions(timeout=int(settings.llm_timeout_seconds * 1000)),
         )
-    except anthropic.APITimeoutError:
-        logger.warning("LLM fingerprint timed out, using checkbox fallback")
-        return None
-    except anthropic.APIConnectionError:
-        logger.warning("LLM unreachable, using checkbox fallback")
-        return None
-    except anthropic.APIStatusError as exc:
-        logger.warning("LLM returned HTTP %s, using checkbox fallback", exc.status_code)
-        return None
-    finally:
-        await client.close()
+    return _gemini_client
 
-    if response.stop_reason == "refusal":
+
+async def gemini_classifier(text: str) -> LLMResult | None:
+    settings = get_settings()
+    if not settings.gemini_api_key:
         return None
-    raw = "".join(block.text for block in response.content if block.type == "text")
-    return parse_llm_response(raw)
+
+    from google.genai import errors, types
+
+    try:
+        response = await _get_gemini_client().aio.models.generate_content(
+            model=settings.gemini_model,
+            contents=f"<complaint>\n{text}\n</complaint>",
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                temperature=0,
+                max_output_tokens=256,
+                response_mime_type="application/json",
+                response_json_schema=RESPONSE_SCHEMA,
+            ),
+        )
+    except errors.APIError as exc:
+        logger.warning("Gemini returned HTTP %s, using checkbox fallback", exc.code)
+        return None
+    # Timeouts and network errors propagate to build_fingerprint, which falls back too.
+    return parse_llm_response(response.text or "")
 
 
 async def build_fingerprint(
@@ -205,7 +220,7 @@ async def build_fingerprint(
     result = _cache.get(key)
     if result is None:
         try:
-            result = await (classifier or anthropic_classifier)(text)
+            result = await (classifier or gemini_classifier)(text)
         except Exception:  # the fallback must never break report submission
             logger.exception("LLM fingerprint failed, using checkbox fallback")
             result = None
