@@ -11,7 +11,7 @@ class Base(DeclarativeBase):
 
 
 def _make_engine(url: str) -> AsyncEngine:
-    kwargs: dict = {"echo": get_settings().db_echo}
+    kwargs: dict = {"echo": get_settings().db_echo, "hide_parameters": True}
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
     else:
