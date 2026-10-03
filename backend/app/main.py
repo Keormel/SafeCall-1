@@ -1,49 +1,60 @@
-import os
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi.middleware import SlowAPIMiddleware
 
-app = FastAPI(title="Hachaton API", version="0.1.0")
+from app.config import get_settings
+from app.errors import register_error_handlers
+from app.jobs import create_scheduler
+from app.limiter import limiter
+from app.routers import admin, auth, campaigns, feedback, numbers, reports, sync
+from app.schemas import HealthResponse
 
-RISK_ENGINE_URL = os.environ["RISK_ENGINE_URL"]
-CAMPAIGN_ENGINE_URL = os.environ["CAMPAIGN_ENGINE_URL"]
-LLM_API_URL = os.environ["LLM_API_URL"]
-
-
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
-
-
-@app.get("/config")
-def config() -> dict[str, str | None]:
-    return {
-        "risk_engine_url": RISK_ENGINE_URL,
-        "campaign_engine_url": CAMPAIGN_ENGINE_URL,
-        "llm_api_url": LLM_API_URL or None,
-        "sync": "api-mediated",
-    }
+settings = get_settings()
+logging.basicConfig(
+    level=settings.log_level.upper(),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 
-@app.post("/check-number")
-def check_number() -> dict[str, object]:
-    return {}
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    scheduler = create_scheduler() if settings.scheduler_enabled else None
+    if scheduler:
+        scheduler.start()
+    try:
+        yield
+    finally:
+        if scheduler:
+            scheduler.shutdown(wait=False)
 
 
-@app.post("/report")
-def report() -> dict[str, object]:
-    return {}
+app = FastAPI(
+    title=settings.app_name,
+    version="1.0.0",
+    description="Number-reputation backend for the SafeCall app. No audio or call content is collected.",
+    lifespan=lifespan,
+)
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+register_error_handlers(app)
+
+API_PREFIX = "/api/v1"
+for module in (auth, numbers, reports, sync, campaigns, feedback, admin):
+    app.include_router(module.router, prefix=API_PREFIX)
 
 
-@app.post("/feedback")
-def feedback() -> dict[str, object]:
-    return {}
-
-
-@app.get("/campaigns")
-def campaigns() -> list[object]:
-    return []
-
-
-@app.get("/numbers")
-def numbers() -> list[object]:
-    return []
+@app.get("/health", response_model=HealthResponse, tags=["health"])
+@limiter.exempt
+async def health() -> HealthResponse:
+    return HealthResponse()

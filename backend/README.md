@@ -15,10 +15,14 @@
 Стек: Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, PostgreSQL, APScheduler, slowapi,
 python-jose, phonenumbers, Anthropic API (`claude-sonnet-4-6`).
 
+Всё работает одним процессом. Risk engine и campaign engine раньше были заглушками в отдельных
+сервисах `services/*`, теперь это модули в `app/services/`. Схемой БД управляет только Alembic,
+SQL-файла инициализации больше нет.
+
 ## Структура
 
 ```
-safecall-backend/
+backend/
 ├── app/
 │   ├── main.py              # FastAPI app, CORS, лимиты, обработчики ошибок, планировщик
 │   ├── config.py            # pydantic-settings (.env)
@@ -43,30 +47,40 @@ safecall-backend/
 
 ## Запуск
 
-### Docker
+### Docker (весь стек)
+
+`docker-compose.yml` и `.env.example` лежат в **корне репозитория**, команды запускаются оттуда.
+Compose поднимает три сервиса: `api` (эта папка), `postgres` и `dashboard`.
 
 ```bash
-cd safecall-backend
 cp .env.example .env          # поменяйте JWT_SECRET и ADMIN_API_KEY, при желании задайте ANTHROPIC_API_KEY
-docker compose up --build -d  # api на :8000, postgres на :5433
+docker compose up --build -d  # api :8000, dashboard :3000, postgres :5432
+docker compose exec api python -m scripts.seed --reset
 ```
 
 Миграции применяются при старте контейнера (`alembic upgrade head`). Swagger лежит на
 http://localhost:8000/docs, OpenAPI-схема на http://localhost:8000/openapi.json.
 
-Seed:
+Если `docker` отвечает `permission denied ... docker.sock`, добавьте себя в группу:
+`sudo usermod -aG docker $USER`, затем перелогиньтесь.
+
+### Локально без Docker
+
+Нужен Python 3.12+. Настройки читаются из переменных окружения и из `.env` **в текущей папке**,
+поэтому корневой `.env` нужно подключить симлинком или задать переменные через `export`.
 
 ```bash
-docker compose exec api python -m scripts.seed --reset
-```
-
-### Локально без Docker (SQLite)
-
-```bash
-cd safecall-backend
-python3.12 -m venv .venv && . .venv/bin/activate
+cd backend
+python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
+
+# Вариант А: SQLite, без внешних зависимостей
 export DATABASE_URL=sqlite+aiosqlite:///./safecall.db
+
+# Вариант Б: Postgres из compose, API локально с --reload
+#   (из корня) docker compose up -d postgres
+#   ln -sf ../.env .env      # DATABASE_URL из .env.example уже смотрит на localhost:5432
+
 alembic upgrade head
 python -m scripts.seed --reset
 uvicorn app.main:app --reload
@@ -74,9 +88,11 @@ uvicorn app.main:app --reload
 
 ### Тесты
 
+Тесты используют временную SQLite-базу, LLM замокан. Ни Postgres, ни ключ API не нужны.
+
 ```bash
-pytest -q                                   # локально (SQLite, LLM замокан)
-docker compose exec api pytest -q           # внутри контейнера
+cd backend && pytest -q          # локально
+docker compose exec api pytest -q   # внутри контейнера
 ```
 
 ### Генерация Dart-клиента
@@ -160,6 +176,7 @@ openapi-generator-cli generate -i openapi.json -g dart-dio -o safecall_api
 
 ```bash
 B=http://localhost:8000/api/v1
+ADMIN_API_KEY=change-me-admin-key   # значение из .env
 
 # Здоровье
 curl -s http://localhost:8000/health
@@ -211,12 +228,15 @@ Seed создаёт 90 номеров (12 в трёх кампаниях, 8 яв
 в сид они не зашиты. Демо-номер `+37369000777` остаётся без данных.
 
 ```bash
-docker compose exec api python -m scripts.seed --reset
+docker compose exec api python -m scripts.seed --reset     # локально: python -m scripts.seed --reset
 ```
 
 **Шаг 1. Новый номер неизвестен.**
 
 ```bash
+B=http://localhost:8000/api/v1
+AUTH="Authorization: Bearer $(curl -s -X POST $B/auth/device -H 'Content-Type: application/json' \
+  -d '{"device_id":"00000000-0000-4000-8000-0000000000de"}' | jq -r .access_token)"
 curl -s -X POST $B/check-number -H "$AUTH" -H 'Content-Type: application/json' -d '{"phone":"+37369000777"}'
 # risk_level: UNKNOWN
 ```
@@ -251,14 +271,25 @@ curl -s "$B/sync?since=<server_time из прошлой синхронизаци
 **Шаг 5 (по желанию).** Третий жалобщик, и номер становится HIGH. Проверить, что повторный
 репорт с того же устройства отклоняется: снова отправить шаг 2, получить `409 DUPLICATE_REPORT`.
 
-Без curl те же шаги 2, 3 и 5 выполняет `python -m scripts.seed --demo-step`: каждый вызов
-добавляет жалобу от нового устройства и печатает результат проверки.
+Без curl те же шаги 2, 3 и 5 выполняет `--demo-step`: каждый вызов добавляет жалобу
+от нового устройства и печатает результат проверки.
+
+```bash
+docker compose exec api python -m scripts.seed --demo-step   # локально: python -m scripts.seed --demo-step
+```
+
+Флаги seed: `--reset` очищает БД перед заполнением, `--seed N` задаёт другой набор случайных
+номеров, `--create-tables` создаёт таблицы без Alembic (быстрый старт на SQLite).
 
 ## Конфигурация
 
-Все переменные перечислены в `.env.example`. Самые важные:
+Все переменные перечислены в корневом `.env.example`. Самые важные:
 `DATABASE_URL`, `JWT_SECRET`, `ADMIN_API_KEY`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`,
 `RATE_LIMIT_*`, `RECALC_INTERVAL_MINUTES`, `SCHEDULER_ENABLED`.
+
+Для дашборда: CORS открыт (`CORS_ORIGINS`), статистику отдаёт `GET /api/v1/admin/stats`
+с заголовком `X-Admin-Key`, списки — `/campaigns` и `/numbers` (нужен JWT, см. `/auth/device`).
+Сейчас дашборд показывает захардкоженные данные и к API не подключён.
 
 ## Ограничения (хакатон)
 
