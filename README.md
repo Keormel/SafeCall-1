@@ -29,20 +29,23 @@ docker compose exec api python -m scripts.seed --reset   # demo data
 
 ## Gemini
 
-Complaint text is turned into a fingerprint by Google Gemini (`GEMINI_MODEL`, default
-`gemini-3.8-flash`). Without `GEMINI_API_KEY` the API still works and builds fingerprints from the
-report checkboxes. Keep the key server-side: never commit `.env` or put the key in client code.
+Google Gemini (`GEMINI_MODEL`, default `gemini-3.8-flash`) turns complaint text into a fingerprint
+and answers free-text questions in the in-app assistant. Put the key into `.env`:
 
-To verify a real key without exposing it:
-
-```bash
-set -a; . ./.env; set +a
-curl "https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL:-gemini-3.8-flash}:generateContent" \
-  -H "Content-Type: application/json" -H "x-goog-api-key: $GEMINI_API_KEY" \
-  -d '{"contents":[{"parts":[{"text":"Мне позвонили якобы из банка и попросили код из SMS"}]}]}'
+```env
+GEMINI_API_KEY=your-key
+GEMINI_API_KEYS=second-key,third-key   # optional: used when a key hits its quota or is rejected
 ```
 
-A successful response contains `candidates`. `401`/`403` means an invalid or unauthorized key;
-`404` means the model is not available to the account — set another `GEMINI_MODEL`.
+Then check that everything works end to end (keys are never printed):
+
+```bash
+docker compose up -d --build api
+docker compose exec api python -m scripts.check_gemini   # READY / NOT READY with the reason
+```
+
+Without a key the app still works: fingerprints come from the report checkboxes, and the assistant
+answers its ready-made buttons and recognised topics from vetted texts. Keep keys server-side:
+never commit `.env` or put a key in client code.
 
 Stop with `docker compose down` (add `-v` to drop the database volume).

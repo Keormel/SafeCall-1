@@ -29,7 +29,7 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 from app import db  # noqa: E402
 from app.db import Base  # noqa: E402
 from app.main import app  # noqa: E402
-from app.services import assistant, fingerprint  # noqa: E402
+from app.services import fingerprint, gemini  # noqa: E402
 
 TESTS_DIR = Path(__file__).parent
 ADMIN_KEY = "test-admin-key"
@@ -78,10 +78,53 @@ def no_real_gemini(monkeypatch):
     """External boundary: a test that reaches the real Gemini client fails loudly."""
 
     def forbidden():
-        raise AssertionError("Real Gemini client requested in a test; install a fake")
+        raise AssertionError("Real Gemini client requested in a test; use the fake_gemini fixture")
 
-    monkeypatch.setattr(fingerprint, "_get_gemini_client", forbidden)
-    monkeypatch.setattr(assistant, "get_client", forbidden)
+    gemini.reset_state()
+    monkeypatch.setattr(gemini, "get_client", lambda key=None: forbidden())
+
+
+class FakeGemini:
+    """Stands in for Gemini at the client boundary (app.services.gemini.get_client).
+
+    `text` is returned for every call unless `responder(kwargs)` is set; `errors` are raised in order,
+    one per call, before falling back to the text. `calls` records each request with the key used.
+    """
+
+    def __init__(self) -> None:
+        self.text: str | None = "Положите трубку и сами позвоните в банк по номеру на карте."
+        self.finish_reason: str = "STOP"
+        self.responder = None
+        self.errors: list[Exception] = []
+        self.calls: list[dict] = []
+
+    def client_for(self, key=None):
+        fake = self
+
+        class Models:
+            async def get(self, model):
+                fake.calls.append({"get": model, "key": key})
+                return type("ModelInfo", (), {"name": model, "output_token_limit": 65536})()
+
+            async def generate_content(self, **kwargs):
+                fake.calls.append({**kwargs, "key": key})
+                if fake.errors:
+                    raise fake.errors.pop(0)
+                text = fake.responder(kwargs) if fake.responder else fake.text
+                candidate = type("Candidate", (), {"finish_reason": fake.finish_reason})()
+                return type("Response", (), {"text": text, "candidates": [candidate]})()
+
+        return type("Client", (), {"aio": type("Aio", (), {"models": Models()})()})()
+
+
+@pytest.fixture
+def fake_gemini(monkeypatch):
+    from app.config import get_settings
+
+    fake = FakeGemini()
+    monkeypatch.setattr(get_settings(), "gemini_api_key", "test-key")
+    monkeypatch.setattr(gemini, "get_client", fake.client_for)
+    return fake
 
 
 @pytest.fixture

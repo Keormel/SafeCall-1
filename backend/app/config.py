@@ -24,7 +24,15 @@ class Settings(BaseSettings):
     default_region: str = "MD"
 
     gemini_api_key: str | None = None
+    # Optional extra keys, comma-separated: when one hits its quota (429) or is revoked, the next is used.
+    gemini_api_keys: str = ""
     gemini_model: str = "gemini-3.8-flash"
+    # Gemini "thinking": empty = model default. Thinking tokens count against max_output_tokens, so
+    # a high level with a small limit yields empty answers. Use a level (minimal/low/medium/high) for
+    # Gemini 3 models or a budget in tokens (0 = off) for Gemini 2.5.
+    gemini_thinking_level: str = ""
+    gemini_thinking_budget: int | None = None
+    gemini_retry_attempts: int = 2
     llm_timeout_seconds: float = 8.0
     llm_cache_size: int = 1024
     llm_cache_ttl_seconds: int = 7 * 24 * 3600
@@ -35,7 +43,8 @@ class Settings(BaseSettings):
     free_text_max_length: int = 1000
 
     assistant_timeout_seconds: float = 20.0
-    assistant_max_output_tokens: int = 800
+    assistant_max_output_tokens: int = 2048
+    assistant_reply_max_chars: int = 1500
 
     rate_limit_enabled: bool = True
     rate_limit_report: str = "10/hour"

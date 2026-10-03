@@ -1,4 +1,4 @@
-from app.services import fingerprint
+from app.services import fingerprint, gemini
 from app.services.fingerprint import LLMResult, build_fingerprint, hash_free_text, parse_llm_response
 
 
@@ -104,7 +104,7 @@ async def test_gemini_classifier_request_and_parse(monkeypatch):
 
     monkeypatch.setattr(get_settings(), "gemini_api_key", "test-key")
     models = _FakeModels(text='{"category": "BANK", "tags": ["OTP", "NOT_A_TAG"]}')
-    monkeypatch.setattr(fingerprint, "_get_gemini_client", lambda: _fake_client(models))
+    monkeypatch.setattr(gemini, "get_client", lambda key=None: _fake_client(models))
 
     assert await fingerprint.gemini_classifier("просили код") == LLMResult("BANK", ("OTP",))
     call = models.calls[0]
@@ -121,7 +121,7 @@ async def test_gemini_api_error_falls_back(monkeypatch):
 
     monkeypatch.setattr(get_settings(), "gemini_api_key", "test-key")
     models = _FakeModels(exc=errors.ClientError(429, {"error": {"message": "quota"}}))
-    monkeypatch.setattr(fingerprint, "_get_gemini_client", lambda: _fake_client(models))
+    monkeypatch.setattr(gemini, "get_client", lambda key=None: _fake_client(models))
 
     assert await fingerprint.gemini_classifier("text") is None
     assert await build_fingerprint("BANK", ["OTP"], "another text") == ["BANK", "OTP"]

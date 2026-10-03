@@ -120,6 +120,20 @@ class ChatRequest(BaseModel):
 
 class ChatReply(BaseModel):
     reply: str
+    source: Literal["preset", "llm", "fallback"] = Field(
+        description="preset: ready answer to a button; llm: Gemini; fallback: ready answer while Gemini is unavailable"
+    )
+    suggestions: list[str] = Field(default_factory=list, description="Follow-up buttons; send the text as a message")
+
+
+class SuggestionButton(BaseModel):
+    id: str
+    text: str
+
+
+class SuggestionsResponse(BaseModel):
+    language: Literal["ru", "ro"]
+    suggestions: list[SuggestionButton]
 
 
 # --- feedback

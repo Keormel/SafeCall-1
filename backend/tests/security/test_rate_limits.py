@@ -28,14 +28,14 @@ async def test_check_limit_60_per_minute_then_resets(client, clock, limiter_on):
 
 async def test_assistant_limit_20_per_hour(client, clock, limiter_on, monkeypatch):
     from app.config import get_settings
-    from app.services import assistant
+    from app.services import gemini
 
     class Models:
         async def generate_content(self, **kw):
             return type("R", (), {"text": "ok"})()
 
     monkeypatch.setattr(get_settings(), "gemini_api_key", "k")
-    monkeypatch.setattr(assistant, "get_client", lambda: type("C", (), {"aio": type("A", (), {"models": Models()})()})())
+    monkeypatch.setattr(gemini, "get_client", lambda key=None: type("C", (), {"aio": type("A", (), {"models": Models()})()})())
     headers = await auth_headers(client)
     body = {"messages": [{"role": "user", "content": "?"}]}
     for _ in range(20):

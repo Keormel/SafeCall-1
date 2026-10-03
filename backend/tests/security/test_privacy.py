@@ -8,7 +8,7 @@ from sqlalchemy import inspect
 
 from app import db
 from app.main import app
-from app.services import assistant
+from app.services import gemini
 from tests.conftest import ADMIN_KEY, admin_headers, auth_headers
 from tests.factories import API, api_report
 
@@ -26,7 +26,7 @@ def _server_logs(caplog) -> str:
 @pytest.fixture
 def fake_llms(monkeypatch):
     from app.config import get_settings
-    from app.services import fingerprint
+
 
     class Models:
         async def generate_content(self, **kw):
@@ -35,8 +35,7 @@ def fake_llms(monkeypatch):
 
     client = type("C", (), {"aio": type("A", (), {"models": Models()})()})()
     monkeypatch.setattr(get_settings(), "gemini_api_key", "k")
-    monkeypatch.setattr(fingerprint, "_get_gemini_client", lambda: client)
-    monkeypatch.setattr(assistant, "get_client", lambda: client)
+    monkeypatch.setattr(gemini, "get_client", lambda key=None: client)
 
 
 async def test_full_flow_logs_hold_no_number_text_token_or_key(client, caplog, fake_llms):

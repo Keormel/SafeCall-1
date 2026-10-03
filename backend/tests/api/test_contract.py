@@ -4,7 +4,7 @@ import jsonschema
 import pytest
 
 from app.main import app
-from app.services import assistant
+from app.services import gemini
 from app.services.report_service import submit_report
 from tests.conftest import admin_headers, auth_headers
 from tests.factories import API, make_devices, phone, reported_number
@@ -88,6 +88,6 @@ async def test_assistant_matches_schema(client, monkeypatch):
             return type("R", (), {"text": "Положите трубку."})()
 
     monkeypatch.setattr(get_settings(), "gemini_api_key", "k")
-    monkeypatch.setattr(assistant, "get_client", lambda: type("C", (), {"aio": type("A", (), {"models": Models()})()})())
+    monkeypatch.setattr(gemini, "get_client", lambda key=None: type("C", (), {"aio": type("A", (), {"models": Models()})()})())
     resp = await client.post(f"{API}/assistant/chat", json={"messages": [{"role": "user", "content": "?"}]}, headers=await auth_headers(client))
     _validate("/api/v1/assistant/chat", "post", 200, resp.json())

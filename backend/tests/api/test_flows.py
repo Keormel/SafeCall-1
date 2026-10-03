@@ -393,6 +393,7 @@ def test_openapi_operation_ids_are_short_and_unique():
         "get_campaign",
         "create_feedback",
         "chat",
+        "suggestions",
         "get_stats",
         "admin_token",
         "list_reports",

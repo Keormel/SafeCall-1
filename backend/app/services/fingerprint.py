@@ -16,7 +16,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from app.config import get_settings
-from app.services.gemini import get_client
+from app.services import gemini
 
 logger = logging.getLogger(__name__)
 
@@ -214,27 +214,29 @@ RESPONSE_SCHEMA = {
     "required": ["category", "tags"],
 }
 
-# Kept as a module attribute so tests can swap the client.
-_get_gemini_client = get_client
+# Kept as a module attribute so tests can swap Gemini out.
+generate_content = gemini.generate_content
 
 
 async def gemini_classifier(text: str) -> LLMResult | None:
-    settings = get_settings()
-    if not settings.gemini_api_key:
+    if not gemini.is_configured():
         return None
 
     from google.genai import errors, types
 
     try:
-        response = await _get_gemini_client().aio.models.generate_content(
-            model=settings.gemini_model,
+        response = await generate_content(
+            model=get_settings().gemini_model,
             contents=f"<complaint>\n{text}\n</complaint>",
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
                 temperature=0,
-                max_output_tokens=256,
+                # Room for the model's thinking tokens: a tight limit returns empty JSON on thinking models.
+                max_output_tokens=1024,
                 response_mime_type="application/json",
                 response_json_schema=RESPONSE_SCHEMA,
+                safety_settings=gemini.safety_settings(),
+                thinking_config=gemini.thinking_config(),
             ),
         )
     except errors.APIError as exc:
