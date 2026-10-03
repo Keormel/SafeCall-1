@@ -1,0 +1,197 @@
+{
+  "@@locale": "ro",
+  "appName": "SafeCall",
+  "ok": "OK",
+  "cancel": "Anulează",
+  "close": "Închide",
+  "retry": "Reîncearcă",
+  "done": "Gata",
+  "yes": "Da",
+  "no": "Nu",
+  "errNoConnection": "Nu există conexiune, încercați mai târziu",
+  "errGeneric": "Ceva n-a mers bine. Încercați din nou",
+  "errRateLimited": "Prea multe cereri. Încercați mai târziu",
+  "errInvalidPhone": "Verificați numărul de telefon",
+  "errDuplicateReport": "Ați raportat deja acest număr astăzi",
+  "errAssistantUnavailable": "Asistentul nu este disponibil acum. Încercați mai târziu",
+  "riskHigh": "Pericol",
+  "riskHighHint": "Posibilă fraudă. Nu comunicați coduri și nu transferați bani",
+  "riskMedium": "Atenție",
+  "riskMediumHint": "Există semne asemănătoare cu o schemă de fraudă cunoscută",
+  "riskLow": "Puține plângeri",
+  "riskLowHint": "Acest număr a fost raportat rar",
+  "riskUnknown": "Număr necunoscut",
+  "riskUnknownHint": "Încă nu avem suficiente informații despre acest număr. Nu comunicați codurile din SMS și datele bancare",
+  "catBank": "Bancă",
+  "catPolice": "Poliție",
+  "catDelivery": "Livrare",
+  "catRelative": "Rudă",
+  "catInvestment": "Investiții",
+  "catOther": "Altceva",
+  "onb1Title": "Nu ascultăm convorbirile",
+  "onb1Body": "SafeCall nu înregistrează și nu analizează sunetul, nu citește contactele și nu vă află numele.",
+  "onb2Title": "Verificăm doar numărul",
+  "onb2Body": "Numărul apelantului este verificat într-o bază aflată chiar pe telefonul dvs. — chiar și fără internet.",
+  "onb3Title": "Activați protecția",
+  "onb3Body": "Permiteți notificările ca să vă putem avertiza în timpul apelului. Apelurile nu sunt blocate niciodată — dvs. decideți dacă răspundeți.",
+  "onbNext": "Înainte",
+  "onbSkip": "Omite",
+  "onbEnable": "Activează protecția",
+  "onbLater": "Mai târziu",
+  "tabHome": "Acasă",
+  "tabAssistant": "Asistent",
+  "tabHistory": "Istoric",
+  "tabSettings": "Setări",
+  "protectionOn": "Protecția este activă",
+  "protectionOff": "Activează protecția",
+  "protectionOnHint": "Vă avertizăm despre apelurile suspecte",
+  "protectionOffHint": "Apăsați pentru a activa",
+  "protectionOffTitle": "Cum dezactivați protecția",
+  "protectionOffBody": "Protecția poate fi dezactivată doar din setările telefonului.",
+  "protectionIosTitle": "Activați SafeCall în setări",
+  "protectionIosBody": "Deschideți: Telefon → Blocare și identificare apeluri → activați SafeCall.",
+  "openSettings": "Deschide setările",
+  "dbCount": "Numere în bază: {count}",
+  "@dbCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dbUpdated": "Actualizat: {when}",
+  "@dbUpdated": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "dbNever": "Baza nu a fost încă descărcată",
+  "justNow": "chiar acum",
+  "minutesAgo": "acum {n} min",
+  "@minutesAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "hoursAgo": "acum {n} h",
+  "@hoursAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "daysAgo": "acum {n} zile",
+  "@daysAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "updateNow": "Actualizează acum",
+  "updating": "Se actualizează…",
+  "assistantButton": "Asistent AI",
+  "assistantButtonHint": "Cereți un sfat dacă aveți îndoieli",
+  "recentCalls": "Apeluri recente",
+  "allHistory": "Tot istoricul",
+  "noCalls": "Nu au fost încă apeluri verificate",
+  "manualCheck": "Verificați un număr manual",
+  "phoneHint": "+373 69 123 456",
+  "checkButton": "Verifică",
+  "reportsCount": "Plângeri: {n}",
+  "@reportsCount": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "schemeLabel": "Schemă: {name}",
+  "@schemeLabel": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "fromLocalDb": "Fără conexiune — răspuns din baza de pe telefon",
+  "reportNumber": "Raportează numărul",
+  "assistantTitle": "Asistent AI",
+  "newChat": "Chat nou",
+  "assistantWelcome": "Bună ziua! Spuneți ce s-a întâmplat sau alegeți o întrebare de mai jos.",
+  "typing": "Scrie…",
+  "messageHint": "Scrieți o întrebare",
+  "send": "Trimite",
+  "chipBank": "Mă sună de la bancă",
+  "chipCode": "Am spus codul din SMS",
+  "chipUnknown": "Ce înseamnă ⚪ Număr necunoscut?",
+  "chipTransfer": "Ce fac dacă am transferat deja bani?",
+  "assistantDisclaimer": "Asistentul oferă sfaturi generale. În caz de îndoială, sunați la bancă la numărul de pe card sau la 112.",
+  "reportTitle": "Raportați apelul",
+  "reportQuestion": "A fost un apel suspect?",
+  "reportWhat": "Ce s-a întâmplat? Bifați tot ce a fost",
+  "optBank": "S-au prezentat de la bancă",
+  "optPolice": "S-au prezentat de la poliție",
+  "optOtp": "Au cerut codul din SMS",
+  "optCard": "Au cerut datele cardului",
+  "optTransfer": "Au cerut să transferați bani",
+  "optApp": "Au propus să instalați o aplicație",
+  "optOther": "Altceva",
+  "tellMore": "Povestiți ce s-a întâmplat",
+  "tellMoreHint": "Opțional. Textul nu este salvat",
+  "reportSend": "Trimite",
+  "thanksTitle": "Mulțumim, i-ați ajutat pe alții",
+  "thanksBody": "Semnalul dvs. va ajuta la avertizarea altor oameni la timp.",
+  "thanksQueued": "Acum nu există conexiune — vom trimite mesajul când va apărea internetul.",
+  "historyTitle": "Istoricul apelurilor",
+  "historyEmpty": "Aici vor apărea apelurile verificate de SafeCall",
+  "reportAction": "Raportează",
+  "reportedLabel": "Trimis",
+  "settingsTitle": "Setări",
+  "sectionAbout": "Despre SafeCall",
+  "howItWorks": "Cum funcționează",
+  "howItWorksBody": "Când sunteți apelat, SafeCall primește doar numărul apelantului.\n\nNumărul este verificat într-o bază păstrată pe telefonul dvs. Nu este nevoie de internet, așa că răspunsul vine într-o fracțiune de secundă.\n\nDacă alți oameni s-au plâns de acest număr, veți vedea un avertisment. Apelul nu este blocat — dvs. decideți dacă răspundeți.\n\nDupă apel puteți spune dacă a fost suspect. Așa baza devine mai precisă pentru toți.",
+  "privacy": "Confidențialitate",
+  "privacyStored": "Ce se păstrează",
+  "privacyStoredBody": "Baza de numere cu nivelul de risc și istoricul apelurilor verificate (număr, oră, stare) — doar pe telefonul dvs. Pentru legătura cu serverul se folosește un cod aleatoriu al dispozitivului.",
+  "privacyNotStored": "Ce nu se păstrează",
+  "privacyNotStoredBody": "Sunetul convorbirilor, contactele, numele și numărul dvs. Conversația cu asistentul nu este salvată și se șterge cu butonul «Chat nou». Textul plângerii este folosit doar pentru recunoașterea schemei și nu este păstrat.",
+  "sectionDatabase": "Baza de numere",
+  "updateDb": "Actualizează baza acum",
+  "sectionNotifications": "Notificări",
+  "notifications": "Avertismente despre apeluri",
+  "language": "Limba",
+  "langRu": "Русский",
+  "langRo": "Română",
+  "version": "Versiune",
+  "server": "Adresa serverului",
+  "serverHint": "Pentru iPhone — IP-ul calculatorului din aceeași rețea Wi-Fi",
+  "save": "Salvează",
+  "resetDefault": "Implicit",
+  "sectionDemo": "Pentru demo",
+  "simulateCall": "Simulează un apel",
+  "simulateTitle": "Simulare apel",
+  "simulateHint": "Introduceți un număr sau alegeți un exemplu. Aplicația îl verifică la fel ca la un apel real: escroc din bază — avertisment imediat, orice număr — întrebare după apel.",
+  "channelWarnings": "Avertismente despre apeluri",
+  "channelReports": "Întrebări după apel",
+  "channelSync": "Actualizarea bazei",
+  "callerIdHigh": "⚠️ SafeCall: posibilă fraudă",
+  "callerIdMedium": "⚠️ SafeCall: fiți atenți",
+  "notifScamTitle": "Atenție, posibil v-a sunat un escroc",
+  "postCallScamBody": "Apăsați dacă a fost un escroc",
+  "postCallUnknownBody": "A fost un escroc? Apăsați pentru a raporta",
+  "actionScam": "❗ Este escroc",
+  "actionYesScam": "❗ Da, escroc",
+  "quickReportSending": "Trimitem numărul…",
+  "simulateInCall": "Apel în curs…",
+  "simulateEnd": "Încheie apelul",
+  "simulateEnded": "Apel încheiat — vedeți notificarea",
+  "simulateScamPreset": "Escroc din bază",
+  "simulateUnknownPreset": "Număr nou",
+  "simulateCallButton": "Sună"
+}
