@@ -1,10 +1,18 @@
+import uuid
+
 import pytest
 
-from app.models import RiskLevel
+from app.models import Device, Feedback, Number, Report, RiskLevel
 from app.services.risk_engine import (
+    FEEDBACK_CORRECT_DELTA,
+    FEEDBACK_INCORRECT_DELTA,
+    MAX_REPUTATION,
+    MIN_REPUTATION,
     ReportSignal,
+    apply_feedback_to_reporters,
     campaign_points,
     level_for_score,
+    recalculate_device_reputations,
     reporters_points,
     score_number,
     similarity_points,
@@ -105,3 +113,61 @@ def test_campaign_only_number_is_scored():
     result = score_number([], campaign_risk_score=80)
     assert result.level == RiskLevel.LOW
     assert result.score == 24
+
+
+async def test_apply_feedback_to_reporters_unit(session):
+    dev1 = Device(id=uuid.uuid4(), reputation=1.0)
+    dev2 = Device(id=uuid.uuid4(), reputation=1.0)
+    session.add_all([dev1, dev2])
+    await session.commit()
+
+    num = Number(phone="+37369999001", risk_level=RiskLevel.LOW.value, risk_score=10)
+    session.add(num)
+    await session.commit()
+
+    from datetime import date
+    r1 = Report(number_id=num.id, device_id=dev1.id, category="BANK", actions=["OTP"], report_day=date.today())
+    r2 = Report(number_id=num.id, device_id=dev2.id, category="BANK", actions=["OTP"], report_day=date.today())
+    session.add_all([r1, r2])
+    await session.commit()
+
+    # Positive feedback
+    updated = await apply_feedback_to_reporters(session, num.id, was_correct=True)
+    assert len(updated) == 2
+    assert dev1.reputation == 1.1
+    assert dev2.reputation == 1.1
+
+    # Reversal to negative
+    updated = await apply_feedback_to_reporters(session, num.id, was_correct=False, revert_was_correct=True)
+    assert len(updated) == 2
+    assert dev1.reputation == 0.8
+    assert dev2.reputation == 0.8
+
+    # Feedback from banned device is ignored
+    updated = await apply_feedback_to_reporters(session, num.id, was_correct=True, feedback_device_reputation=0.0)
+    assert updated == []
+    assert dev1.reputation == 0.8
+
+
+async def test_recalculate_device_reputations_unit(session):
+    from datetime import date
+    dev1 = Device(id=uuid.uuid4(), reputation=1.0)
+    dev2 = Device(id=uuid.uuid4(), reputation=1.0)
+    reviewer = Device(id=uuid.uuid4(), reputation=1.0)
+    session.add_all([dev1, dev2, reviewer])
+    await session.commit()
+
+    num = Number(phone="+37369999002", risk_level=RiskLevel.LOW.value, risk_score=10)
+    session.add(num)
+    await session.commit()
+
+    r1 = Report(number_id=num.id, device_id=dev1.id, category="BANK", actions=["OTP"], report_day=date.today())
+    session.add(r1)
+    fb1 = Feedback(device_id=reviewer.id, number_id=num.id, was_correct=True)
+    session.add(fb1)
+    await session.commit()
+
+    changed = await recalculate_device_reputations(session)
+    assert changed == 1
+    assert dev1.reputation == 1.1
+    assert dev2.reputation == 1.0

@@ -2,7 +2,7 @@ import uuid
 
 from sqlalchemy import select
 
-from app.models import Report
+from app.models import Device, Report
 from tests.conftest import auth_headers
 
 API = "/api/v1"
@@ -157,6 +157,126 @@ async def test_feedback(client):
     await report(client, headers, phone="+37369000001")
     resp = await client.post(f"{API}/feedback", json={"phone": "+37369000001", "was_correct": True}, headers=headers)
     assert resp.json() == {"status": "accepted"}
+
+
+async def test_feedback_increases_reporter_reputation(client, session):
+    dev_reporter = uuid.uuid4()
+    h_reporter = await auth_headers(client, dev_reporter)
+    dev_reviewer = uuid.uuid4()
+    h_reviewer = await auth_headers(client, dev_reviewer)
+
+    await report(client, h_reporter, phone="+37369000010")
+    device = await session.get(Device, dev_reporter)
+    assert device.reputation == 1.0
+
+    resp = await client.post(f"{API}/feedback", json={"phone": "+37369000010", "was_correct": True}, headers=h_reviewer)
+    assert resp.status_code == 200
+    await session.refresh(device)
+    assert device.reputation == 1.1
+
+    # Idempotent: same feedback again does not apply delta twice
+    resp = await client.post(f"{API}/feedback", json={"phone": "+37369000010", "was_correct": True}, headers=h_reviewer)
+    assert resp.status_code == 200
+    await session.refresh(device)
+    assert device.reputation == 1.1
+
+
+async def test_feedback_decreases_reporter_reputation_and_zeroes_score(client, session):
+    dev_reporter = uuid.uuid4()
+    h_reporter = await auth_headers(client, dev_reporter)
+    phone = "+37369000020"
+    await report(client, h_reporter, phone=phone)
+
+    # Initial check
+    check = (await client.post(f"{API}/check-number", json={"phone": phone}, headers=h_reporter)).json()
+    assert check["risk_level"] == "LOW"
+    assert check["risk_score"] == 10
+
+    device = await session.get(Device, dev_reporter)
+    assert device.reputation == 1.0
+
+    # 5 different devices report false positive (was_correct=False)
+    for i in range(5):
+        h_reviewer = await auth_headers(client, uuid.uuid4())
+        resp = await client.post(f"{API}/feedback", json={"phone": phone, "was_correct": False}, headers=h_reviewer)
+        assert resp.status_code == 200
+
+    await session.refresh(device)
+    assert device.reputation == 0.0
+
+    # When reporter reputation drops to 0, their report is ignored, score drops to 0 / UNKNOWN
+    check = (await client.post(f"{API}/check-number", json={"phone": phone}, headers=h_reporter)).json()
+    assert check["risk_level"] == "UNKNOWN"
+    assert check["risk_score"] == 0
+
+
+async def test_feedback_reversal(client, session):
+    dev_reporter = uuid.uuid4()
+    h_reporter = await auth_headers(client, dev_reporter)
+    dev_reviewer = uuid.uuid4()
+    h_reviewer = await auth_headers(client, dev_reviewer)
+    phone = "+37369000030"
+
+    await report(client, h_reporter, phone=phone)
+    device = await session.get(Device, dev_reporter)
+    assert device.reputation == 1.0
+
+    # First vote: True (+0.1) -> 1.1
+    await client.post(f"{API}/feedback", json={"phone": phone, "was_correct": True}, headers=h_reviewer)
+    await session.refresh(device)
+    assert device.reputation == 1.1
+
+    # Reversal to False: revert +0.1 and apply -0.2 -> 1.1 - 0.3 = 0.8
+    await client.post(f"{API}/feedback", json={"phone": phone, "was_correct": False}, headers=h_reviewer)
+    await session.refresh(device)
+    assert device.reputation == 0.8
+
+
+async def test_feedback_from_banned_device_ignored(client, session):
+    dev_reporter = uuid.uuid4()
+    h_reporter = await auth_headers(client, dev_reporter)
+    dev_banned = uuid.uuid4()
+    h_banned = await auth_headers(client, dev_banned)
+    phone = "+37369000040"
+
+    # Set banned device's reputation to 0
+    banned = await session.get(Device, dev_banned)
+    banned.reputation = 0.0
+    await session.commit()
+
+    await report(client, h_reporter, phone=phone)
+    reporter = await session.get(Device, dev_reporter)
+    assert reporter.reputation == 1.0
+
+    # Banned device's feedback is accepted but does not change reporter reputation
+    resp = await client.post(f"{API}/feedback", json={"phone": phone, "was_correct": False}, headers=h_banned)
+    assert resp.status_code == 200
+    await session.refresh(reporter)
+    assert reporter.reputation == 1.0
+
+
+async def test_recalculate_all_updates_reputations(client, session):
+    dev_reporter = uuid.uuid4()
+    h_reporter = await auth_headers(client, dev_reporter)
+    h_reviewer = await auth_headers(client)
+    phone = "+37369000050"
+
+    await report(client, h_reporter, phone=phone)
+    await client.post(f"{API}/feedback", json={"phone": phone, "was_correct": True}, headers=h_reviewer)
+
+    reporter = await session.get(Device, dev_reporter)
+    assert reporter.reputation == 1.1
+
+    # Reset reporter reputation to test that recalculate restores it
+    reporter.reputation = 1.0
+    await session.commit()
+
+    admin_headers = {"X-Admin-Key": "test-admin-key"}
+    resp = await client.post(f"{API}/admin/recalculate", headers=admin_headers)
+    assert resp.status_code == 200
+
+    await session.refresh(reporter)
+    assert reporter.reputation == 1.1
 
 
 async def test_campaign_flow_and_listing(client):
