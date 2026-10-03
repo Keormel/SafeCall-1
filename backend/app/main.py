@@ -12,7 +12,7 @@ from app.config import get_settings
 from app.errors import register_error_handlers
 from app.jobs import create_scheduler
 from app.limiter import limiter
-from app.routers import admin, auth, campaigns, feedback, numbers, reports, sync
+from app.routers import admin, assistant, auth, campaigns, feedback, numbers, reports, sync
 from app.schemas import HealthResponse
 
 settings = get_settings()
@@ -60,7 +60,7 @@ app.add_middleware(
 register_error_handlers(app)
 
 API_PREFIX = "/api/v1"
-for module in (auth, numbers, reports, sync, campaigns, feedback, admin):
+for module in (auth, numbers, reports, sync, campaigns, feedback, assistant, admin):
     app.include_router(module.router, prefix=API_PREFIX)
 app.include_router(admin.token_router, prefix=API_PREFIX)
 

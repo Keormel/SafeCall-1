@@ -16,6 +16,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from app.config import get_settings
+from app.services.gemini import get_client
 
 logger = logging.getLogger(__name__)
 
@@ -213,21 +214,8 @@ RESPONSE_SCHEMA = {
     "required": ["category", "tags"],
 }
 
-_gemini_client = None
-
-
-def _get_gemini_client():
-    global _gemini_client
-    if _gemini_client is None:
-        from google import genai
-        from google.genai import types
-
-        settings = get_settings()
-        _gemini_client = genai.Client(
-            api_key=settings.gemini_api_key,
-            http_options=types.HttpOptions(timeout=int(settings.llm_timeout_seconds * 1000)),
-        )
-    return _gemini_client
+# Kept as a module attribute so tests can swap the client.
+_get_gemini_client = get_client
 
 
 async def gemini_classifier(text: str) -> LLMResult | None:

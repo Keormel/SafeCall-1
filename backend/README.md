@@ -33,13 +33,15 @@ backend/
 │   ├── errors.py            # единый формат ошибок {"error": {"code", "message"}}
 │   ├── limiter.py           # slowapi, ключ = device_id из JWT (или IP)
 │   ├── jobs.py              # периодический пересчёт рисков и кампаний
-│   ├── routers/             # auth, numbers, reports, sync, campaigns, feedback, admin
+│   ├── routers/             # auth, numbers, reports, sync, campaigns, feedback, assistant, admin
 │   └── services/
 │       ├── risk_engine.py   # чистая функция скоринга + запись в БД
 │       ├── campaign_engine.py  # Жаккар, привязка к кампаниям, кластеризация
 │       ├── fingerprint.py   # словарь тегов, LLM + fallback, кэш (LRU + Redis)
 │       ├── phone.py         # E.164 нормализация, маскирование для логов
-│       └── report_service.py   # сценарий приёма репорта
+│       ├── report_service.py   # сценарий приёма репорта
+│       ├── assistant.py     # ИИ-помощник: системный промпт, диалог → Gemini
+│       └── gemini.py        # общий клиент Gemini
 ├── alembic/                 # миграции (async)
 ├── scripts/seed.py          # демо-данные и демо-сценарий
 └── tests/                   # pytest: движки, fingerprint, API
@@ -113,8 +115,9 @@ openapi-generator-cli generate -i openapi.json -g dart-dio -o safecall_api
 | `ReportsApi` | `createReport` |
 | `SyncApi` | `syncNumbers` |
 | `FeedbackApi` | `createFeedback` |
+| `AssistantApi` | `chat` |
 | `CampaignsApi` | `listCampaigns`, `getCampaign` |
-| `AdminApi` | `getStats`, `recalculate`, `removeNumber`, `restoreNumber` |
+| `AdminApi` | `adminToken`, `getStats`, `listReports`, `activity`, `recalculate`, `removeNumber`, `restoreNumber` |
 
 Имена закреплены тестом `test_openapi_operation_ids_are_short_and_unique`: переименование функции
 эндпоинта меняет API клиента, и тест это поймает.
@@ -190,6 +193,26 @@ openapi-generator-cli generate -i openapi.json -g dart-dio -o safecall_api
   задача просто запускается; если Redis недоступен, тоже запускается — задачи идемпотентны.
 - Номера пересчитываются пачками по 500: два запроса на пачку вместо двух на каждый номер.
 
+### ИИ-помощник (`services/assistant.py`)
+
+`POST /assistant/chat` принимает весь диалог (`role`: `user` | `assistant`, до 20 сообщений,
+каждое до 1000 символов, последнее от пользователя) и возвращает `{"reply": "..."}`.
+Ответ даёт Gemini (`GEMINI_MODEL`) с системным промптом SafeCall:
+
+- отвечает по-русски, а если пользователь пишет по-румынски, то по-румынски; коротко и просто,
+  с расчётом на пожилых людей;
+- объясняет статусы номеров (UNKNOWN — «нет данных», а не «безопасно») и напоминает, что банк
+  и полиция никогда не просят коды из SMS, данные карты, перевод на «безопасный счёт» и установку
+  приложений;
+- если человек уже назвал код или перевёл деньги: позвонить в банк по номеру на карте,
+  заблокировать карту, обратиться в полицию (112), сохранить доказательства;
+- не утверждает, что номер точно мошеннический, и не просит присылать коды и пароли в чат.
+
+Диалоги не сохраняются в БД и не попадают в логи: при ошибке пишется только код ответа Gemini или
+тип исключения. Нет ключа, Gemini недоступен или вернул пустой ответ → `503 ASSISTANT_UNAVAILABLE`,
+и приложение показывает свои статичные советы. Таймаут `ASSISTANT_TIMEOUT_SECONDS` (20 с),
+лимит 20 запросов в час на устройство (`RATE_LIMIT_ASSISTANT`).
+
 ### Синхронизация (`GET /sync`)
 
 1. Первый запуск: `GET /sync` без `since` отдаёт полный снимок (только номера с данными, без UNKNOWN).
@@ -216,10 +239,11 @@ openapi-generator-cli generate -i openapi.json -g dart-dio -o safecall_api
 ```
 
 Коды ошибок: `UNAUTHORIZED` 401, `FORBIDDEN` 403, `NOT_FOUND` 404, `DUPLICATE_REPORT` 409,
-`VALIDATION_ERROR` / `INVALID_PHONE` 422, `INVALID_CURSOR` 400, `RATE_LIMITED` 429.
+`VALIDATION_ERROR` / `INVALID_PHONE` 422, `INVALID_CURSOR` 400, `RATE_LIMITED` 429,
+`ASSISTANT_UNAVAILABLE` 503.
 
 Лимиты считаются на устройство: `/report` 10 в час, `/check-number` 60 в минуту,
-остальное 120 в минуту, общие для всех воркеров через Redis. Номера можно присылать в любом формате (`069 123 456`, `+373 69 123456`).
+`/assistant/chat` 20 в час, остальное 120 в минуту, общие для всех воркеров через Redis. Номера можно присылать в любом формате (`069 123 456`, `+373 69 123456`).
 По умолчанию используется регион MD, в БД хранится только E.164.
 
 ```bash
@@ -248,6 +272,12 @@ curl -s -X POST $B/report -H "$AUTH" -H 'Content-Type: application/json' \
 curl -s "$B/sync?limit=500" -H "$AUTH"
 curl -s "$B/sync?limit=500&cursor=<next_cursor>" -H "$AUTH"
 curl -s "$B/sync?since=2026-10-03T10:00:00Z" -H "$AUTH"
+
+# ИИ-помощник: приложение каждый раз шлёт весь диалог (до 20 сообщений по 1000 символов),
+# последнее сообщение — от пользователя. Диалог не сохраняется и не логируется.
+curl -s -X POST $B/assistant/chat -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"Мне позвонили из банка и просят код из SMS. Что делать?"}]}'
+# {"reply":"Это мошенники: банк никогда не просит коды из SMS. Положите трубку ..."}
 
 # Обратная связь по предупреждению
 curl -s -X POST $B/feedback -H "$AUTH" -H 'Content-Type: application/json' \
