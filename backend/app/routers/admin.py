@@ -19,7 +19,7 @@ router = APIRouter(
 
 
 @router.get("/stats", response_model=AdminStats)
-async def stats(session: AsyncSession = Depends(get_session)) -> AdminStats:
+async def get_stats(session: AsyncSession = Depends(get_session)) -> AdminStats:
     by_level = {level: 0 for level in RiskLevel}
     rows = await session.execute(select(Number.risk_level, func.count(Number.id)).group_by(Number.risk_level))
     for level, count in rows.all():
