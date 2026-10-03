@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 
 async def recalculate_all(session: AsyncSession) -> tuple[int, int]:
     """Returns (numbers whose risk changed, campaigns created)."""
+    # 0. Sync device reputations with accumulated feedback.
+    await risk_engine.recalculate_device_reputations(session)
+    await session.flush()
+
     # 1. Counters first: campaign matching relies on reports_count.
     numbers = (await session.scalars(select(Number))).all()
     for number in numbers:

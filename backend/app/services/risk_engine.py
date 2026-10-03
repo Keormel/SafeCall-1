@@ -1,17 +1,21 @@
 """Rule-based risk scoring. `score_number` is a pure function; `recalculate_number` wires it to the DB."""
 
+import uuid
 from collections import Counter
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Campaign, Device, Number, Report, RiskLevel, utcnow
+from app.models import Campaign, Device, Feedback, Number, Report, RiskLevel, utcnow
 
 LOW_MAX = 29
 MEDIUM_MAX = 59
 MIN_REPORTERS_FOR_HIGH = 3
+MIN_REPUTATION = 0.0
 MAX_REPUTATION = 2.0
+FEEDBACK_CORRECT_DELTA = 0.1
+FEEDBACK_INCORRECT_DELTA = 0.2
 
 REPORTERS_MAX_POINTS = 40
 SIMILARITY_MAX_POINTS = 20
@@ -133,4 +137,77 @@ async def recalculate_number(session: AsyncSession, number: Number) -> bool:
         number.risk_score = result.score
         number.risk_level = result.level.value
         number.updated_at = utcnow()
+    return changed
+
+
+async def apply_feedback_to_reporters(
+    session: AsyncSession,
+    number_id: int,
+    was_correct: bool,
+    feedback_device_reputation: float = 1.0,
+    revert_was_correct: bool | None = None,
+) -> list[Device]:
+    """Adjust reputation of devices that reported this number based on user feedback.
+
+    - Confirmed correct warning -> +0.1 reputation (up to 2.0).
+    - False positive warning -> -0.2 reputation (down to 0.0).
+    - Feedback from banned devices (reputation <= 0) is ignored.
+    """
+    if feedback_device_reputation <= 0.0:
+        return []
+
+    if revert_was_correct is not None:
+        prev_delta = FEEDBACK_CORRECT_DELTA if revert_was_correct else -FEEDBACK_INCORRECT_DELTA
+        new_delta = FEEDBACK_CORRECT_DELTA if was_correct else -FEEDBACK_INCORRECT_DELTA
+        delta = new_delta - prev_delta
+    else:
+        delta = FEEDBACK_CORRECT_DELTA if was_correct else -FEEDBACK_INCORRECT_DELTA
+
+    if delta == 0.0:
+        return []
+
+    reporter_ids = (
+        await session.scalars(
+            select(Report.device_id).where(Report.number_id == number_id).distinct()
+        )
+    ).all()
+
+    updated: list[Device] = []
+    for rep_id in reporter_ids:
+        rep_device = await session.get(Device, rep_id)
+        if rep_device is not None:
+            new_rep = round(min(max(rep_device.reputation + delta, MIN_REPUTATION), MAX_REPUTATION), 2)
+            if rep_device.reputation != new_rep:
+                rep_device.reputation = new_rep
+                updated.append(rep_device)
+    return updated
+
+
+async def recalculate_device_reputations(session: AsyncSession) -> int:
+    """Recalculate reputation for all devices based on accumulated feedback on their reported numbers."""
+    stmt = (
+        select(
+            Report.device_id,
+            Feedback.was_correct,
+            func.count(func.distinct(Feedback.id)),
+        )
+        .join(Feedback, Feedback.number_id == Report.number_id)
+        .join(Device, Device.id == Feedback.device_id)
+        .where(Device.reputation > 0)
+        .group_by(Report.device_id, Feedback.was_correct)
+    )
+    rows = (await session.execute(stmt)).all()
+
+    deltas: dict[uuid.UUID, float] = {}
+    for dev_id, was_correct, count in rows:
+        d = count * FEEDBACK_CORRECT_DELTA if was_correct else -count * FEEDBACK_INCORRECT_DELTA
+        deltas[dev_id] = deltas.get(dev_id, 0.0) + d
+
+    devices = (await session.scalars(select(Device))).all()
+    changed = 0
+    for dev in devices:
+        new_rep = round(min(max(1.0 + deltas.get(dev.id, 0.0), MIN_REPUTATION), MAX_REPUTATION), 2)
+        if dev.reputation != new_rep:
+            dev.reputation = new_rep
+            changed += 1
     return changed
