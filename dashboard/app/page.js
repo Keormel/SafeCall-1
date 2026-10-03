@@ -76,7 +76,7 @@ export default function Home() {
 
         <div className="content">
           <section className="page-heading">
-            <div><h1>Good morning, Alex <span>✦</span></h1><p>Here&apos;s what&apos;s happening with your workspace today.</p></div>
+            <div><h1>Good morning, Alex <span>✦</span></h1><p>Here&apos;s what&apos;s happening with your workspace today — live.</p></div>
             <button className="date-button">Last 30 days <span>⌄</span></button>
           </section>
 
