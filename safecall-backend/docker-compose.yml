@@ -1,0 +1,36 @@
+name: safecall
+
+services:
+  api:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-safecall}:${POSTGRES_PASSWORD:-safecall}@postgres:5432/${POSTGRES_DB:-safecall}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-safecall}
+      POSTGRES_USER: ${POSTGRES_USER:-safecall}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-safecall}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - safecall_pg:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  safecall_pg:
