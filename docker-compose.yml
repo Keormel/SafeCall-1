@@ -1,0 +1,76 @@
+name: hachaton
+
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hachaton}:${POSTGRES_PASSWORD:-hachaton}@postgres:5432/${POSTGRES_DB:-hachaton}
+      REDIS_URL: redis://redis:6379/0
+      LLM_API_URL: ${LLM_API_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      SAFE_BROWSING_API_KEY: ${SAFE_BROWSING_API_KEY:-}
+      VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-}
+      WHOIS_API_URL: ${WHOIS_API_URL:-}
+      WHISPER_URL: ${WHISPER_URL:-}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: no
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hachaton}
+      POSTGRES_USER: ${POSTGRES_USER:-hachaton}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hachaton}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: no
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    restart: no
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_data:
+  redis_data:
