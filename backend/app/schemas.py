@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -154,6 +154,36 @@ class AdminStats(BaseModel):
     devices_count: int
     feedback_count: int
     by_risk_level: dict[RiskLevel, int]
+
+
+class AdminReportOut(BaseModel):
+    id: int
+    phone: str
+    category: str
+    actions: list[str]
+    fingerprint: list[str]
+    has_free_text: bool = Field(description="A complaint text was sent (the text itself is never stored)")
+    risk_level: RiskLevel
+    campaign_id: int | None
+    created_at: datetime
+
+
+class AdminReportList(BaseModel):
+    items: list[AdminReportOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class ActivityDay(BaseModel):
+    date: date
+    reports: int
+    reporters: int = Field(description="Distinct devices that reported that day")
+    new_numbers: int = Field(description="Numbers seen for the first time that day")
+
+
+class ActivityResponse(BaseModel):
+    days: list[ActivityDay] = Field(description="Oldest first, one entry per day, zero-filled")
 
 
 class RecalculateResult(BaseModel):

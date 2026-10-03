@@ -171,3 +171,44 @@ async def test_recalculate_device_reputations_unit(session):
     assert changed == 1
     assert dev1.reputation == 1.1
     assert dev2.reputation == 1.0
+
+
+# --- report ageing
+
+from app.services.risk_engine import MIN_VOTE_WEIGHT, decay_weight  # noqa: E402
+
+
+def aged(n: int, age_days: float, category: str = "BANK", actions: tuple[str, ...] = ("OTP",)):
+    return [ReportSignal(f"dev-{i}", category, actions, 1.0, age_days) for i in range(n)]
+
+
+def test_decay_weight_curve():
+    assert decay_weight(0) == 1.0
+    assert decay_weight(30) == 1.0  # grace period
+    assert decay_weight(120) == pytest.approx(0.5)  # one half-life after grace
+    assert decay_weight(210) == pytest.approx(0.25)
+    assert decay_weight(400) < MIN_VOTE_WEIGHT
+
+
+def test_old_reports_downgrade_a_number():
+    assert score_number(aged(11, 5)).level == RiskLevel.HIGH
+    # Same 11 reporters, all four months old: they count like 5.5 reporters.
+    old = score_number(aged(11, 120))
+    assert old.breakdown["reporters"] == 20
+    assert old.level == RiskLevel.MEDIUM
+
+
+def test_fully_decayed_reports_make_number_unknown():
+    gone = score_number(aged(11, 400))
+    assert gone.level == RiskLevel.UNKNOWN
+    assert gone.unique_reporters == 0
+    # A known campaign still keeps it on the radar.
+    assert score_number(aged(11, 400), campaign_risk_score=80).level == RiskLevel.LOW
+
+
+def test_decayed_votes_do_not_unlock_high():
+    # 2 fresh + 1 forgotten reporter is still < 3 for the anti-abuse cap.
+    signals = aged(2, 1) + [ReportSignal("ancient", "BANK", ("OTP",), 1.0, 500)]
+    result = score_number(signals, campaign_risk_score=100)
+    assert result.unique_reporters == 2
+    assert result.level == RiskLevel.MEDIUM

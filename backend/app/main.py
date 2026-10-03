@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import get_settings
@@ -47,6 +48,8 @@ app = FastAPI(
 )
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
+# /sync snapshots are large, repetitive JSON: gzip typically shrinks them ~10x for mobile networks.
+app.add_middleware(GZipMiddleware, minimum_size=settings.gzip_minimum_size)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -59,6 +62,7 @@ register_error_handlers(app)
 API_PREFIX = "/api/v1"
 for module in (auth, numbers, reports, sync, campaigns, feedback, admin):
     app.include_router(module.router, prefix=API_PREFIX)
+app.include_router(admin.token_router, prefix=API_PREFIX)
 
 
 @app.get("/health", response_model=HealthResponse, tags=["health"])
