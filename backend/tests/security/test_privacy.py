@@ -80,12 +80,8 @@ async def test_admin_key_is_not_echoed_in_error_responses(client):
     assert "attacker-guess" not in resp.text and ADMIN_KEY not in resp.text
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="BUG: SQLAlchemy puts bound parameters into exception text; the unhandled-error handler logs it, "
-    "so a phone number reaches the logs in full. Fix: create_async_engine(..., hide_parameters=True).",
-)
 async def test_database_errors_do_not_carry_phone_numbers():
+    """Unhandled DB errors are logged; their text must not contain bound parameters (hide_parameters=True)."""
     from sqlalchemy import text
 
     async with db.engine.connect() as conn:

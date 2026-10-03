@@ -47,3 +47,25 @@ def test_models_and_migrations_do_not_drift(tmp_path):
     assert alembic(db_file, "upgrade", "head").returncode == 0
     check = alembic(db_file, "check")
     assert check.returncode == 0, check.stdout + check.stderr
+
+
+def test_feedback_migration_survives_existing_duplicate_votes(tmp_path):
+    """0002 adds a unique (device, number) index; data written before it may hold duplicates."""
+    db_file = tmp_path / "m.db"
+    assert alembic(db_file, "upgrade", "0001_initial").returncode == 0
+    with sqlite3.connect(db_file) as conn:
+        conn.execute("INSERT INTO devices (id, created_at, last_seen, reputation) VALUES ('d1', '2026-01-01', '2026-01-01', 1)")
+        conn.execute(
+            "INSERT INTO numbers (id, phone, risk_score, risk_level, reports_count, unique_reporters_count, is_removed, "
+            "created_at, updated_at) VALUES (1, '+37369123456', 0, 'LOW', 1, 1, 0, '2026-01-01', '2026-01-01')"
+        )
+        for was_correct in (1, 0, 1):
+            conn.execute(
+                "INSERT INTO feedback (device_id, number_id, was_correct, created_at) VALUES ('d1', 1, ?, '2026-01-01')",
+                (was_correct,),
+            )
+    up = alembic(db_file, "upgrade", "head")
+    assert up.returncode == 0, up.stderr
+    with sqlite3.connect(db_file) as conn:
+        rows = conn.execute("SELECT id, was_correct FROM feedback").fetchall()
+    assert rows == [(3, 1)]  # the latest vote is kept

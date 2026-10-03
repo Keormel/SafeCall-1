@@ -140,12 +140,7 @@ async def test_counters_match_data_after_random_operations(session, seed):
         await _assert_invariants(session)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="BUG: reports with category OTHER and no actions have fingerprint ['OTHER']; three such numbers "
-    "form a 'Phone scam' campaign (risk 70) and every member gains +21 points without any shared scheme. "
-    "Fix: ignore fingerprints without action tags in matching and clustering.",
-)
 async def test_other_without_actions_never_forms_a_campaign(session):
+    """'Other' with no concrete action is not a scheme; three such numbers must not become a campaign."""
     await _campaign_from_api_flow(session, actions=(), category="OTHER")
     assert await session.scalar(select(func.count(Campaign.id))) == 0

@@ -132,6 +132,8 @@ class CampaignNumber(Base):
 
 class Feedback(Base):
     __tablename__ = "feedback"
+    # A unique index (not a constraint) to match migration 0002 exactly; both enforce one vote per device.
+    __table_args__ = (Index("uq_feedback_device_number", "device_id", "number_id", unique=True),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     device_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), nullable=False)

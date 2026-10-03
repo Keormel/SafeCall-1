@@ -1,6 +1,6 @@
 # Тесты SafeCall backend
 
-394 теста: 165 unit, 180 api, 30 security, 10 perf, 9 e2e. Восемь из них помечены
+397 тестов: unit, api, security, perf, e2e. Шесть из них помечены
 `xfail(strict=True)` с пометкой `BUG:`. Это найденные дефекты, тесты под них не подгонялись.
 Когда баг исправят, тест начнёт проходить, а `strict=True` уронит прогон, пока не снимут пометку.
 
@@ -85,18 +85,18 @@ p95 check-number < 200 мс, p95 sync < 500 мс. В CI это ручной work
 
 | Приоритет | Что | Где проверяется |
 |---|---|---|
-| Высокий | Отзывы (feedback) обеляют номер: 5 новых `device_id` с «ложным срабатыванием» сбрасывают репутацию жалобщиков, и номер опускается с MEDIUM | `security/test_abuse.py::test_feedback_cannot_whitewash_a_scam_number` (xfail) |
+| Высокий | Отзывы (feedback) обеляют номер: 5 новых `device_id` с «ложным срабатыванием» сбрасывают репутацию жалобщиков, и номер опускается с MEDIUM. Частично закрыто в PR #5: отзыв на свою жалобу запрещён, один голос на номер, лимит 20 в час; против новых устройств не помогает | `security/test_abuse.py::test_feedback_cannot_whitewash_a_scam_number` (xfail) |
 | Высокий | 50 согласованных новых устройств выводят легальный (банковский) номер в HIGH: нет allowlist и аттестации устройств | `security/test_abuse.py::test_fifty_coordinated_…` (xfail) |
-| Высокий | Номер целиком попадает в логи: текст ошибки SQLAlchemy содержит параметры запроса (`hide_parameters=True`) | `security/test_privacy.py::test_database_errors_do_not_carry_phone_numbers` (xfail) |
+| ~~Высокий~~ | **Исправлено в PR #5.** Номер целиком попадал в логи через текст ошибки SQLAlchemy; теперь `hide_parameters=True` | `security/test_privacy.py::test_database_errors_do_not_carry_phone_numbers` |
 | Высокий | Номер в URL админских эндпоинтов (`/admin/numbers/{phone}/…`, `?phone=`) — uvicorn access log пишет его целиком | `security/test_privacy.py::test_no_endpoint_takes_a_phone_number_in_the_url` (xfail) |
-| Высокий | Жалобы «Другое» без действий собираются в кампанию «Phone scam» (риск 70, +21 балл посторонним номерам) | `unit/test_campaign_rules.py::test_other_without_actions_never_forms_a_campaign` (xfail) |
+| ~~Высокий~~ | **Исправлено в PR #5.** Жалобы «Другое» без действий собирались в кампанию «Phone scam» | `unit/test_campaign_rules.py::test_other_without_actions_never_forms_a_campaign` |
 | Средний | Риск не монотонен: новая непохожая жалоба снижает долю сходства (3 одинаковые = 40, плюс 4-я другая = 35) | `unit/test_risk_properties.py::test_new_unique_report_never_lowers_risk` (xfail, найдено Hypothesis) |
 | Средний | N+1 в `/report`: жалоба на номер из кампании пересчитывает каждого участника по отдельности (2 запроса на номер) | `perf/test_query_counts.py::test_report_into_a_campaign_uses_constant_queries` (xfail) |
 | Средний | Противоречие в ТЗ демо: жалобы «BANK + OTP + SUSPICIOUS_TRANSACTION» не похожи на кампанию {BANK, OTP, URGENCY} (Жаккар 0.5), а 3 жалобщика по правилу 4 дают HIGH, а не MEDIUM | `e2e/test_demo_scenario.py::test_demo_as_written_in_the_brief` (xfail) |
 | Средний | Гонка счётчиков на PostgreSQL: при READ COMMITTED параллельные жалобы могут не увидеть друг друга в `reports_count`. На SQLite не воспроизводится | `api/test_report.py::test_twenty_parallel_reports_on_one_new_number` — запускается в джобе `test-postgres` |
 | Низкий | При `LOG_LEVEL=debug` или `DB_ECHO=true` драйверы пишут SQL с параметрами, то есть номера целиком | вручную: не включать в production |
 | Низкий | Короткие номера (112, 900, короткие коды банков) не нормализуются (422): на них нельзя пожаловаться | `shared/test_vectors.json` |
-| Низкий | У feedback нет уникального ключа (устройство, номер): два параллельных запроса на PostgreSQL создадут дубль, и он посчитается дважды. На SQLite не воспроизводится, тест появится вместе с миграцией | см. трекер в отчёте |
+| ~~Низкий~~ | **Исправлено в PR #5** (миграция 0002): уникальный индекс (устройство, номер) у feedback. Дубли, накопленные раньше, миграция удаляет | `e2e/test_migrations.py::test_feedback_migration_survives_existing_duplicate_votes` |
 
 ## Что проверяется только вручную
 

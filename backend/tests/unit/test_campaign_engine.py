@@ -9,6 +9,7 @@ from app.services.campaign_engine import (
     campaign_name,
     cluster_numbers,
     dominant_fingerprint,
+    is_campaign_eligible,
     jaccard,
 )
 from app.services.report_service import submit_report
@@ -44,6 +45,18 @@ def test_match_ignores_dissimilar_reports():
 def test_dominant_fingerprint():
     assert dominant_fingerprint([("d1", BANK_OTP)]) is None
     assert dominant_fingerprint([("d1", BANK_OTP), ("d2", BANK_OTP), ("d3", frozenset({"POLICE"}))]) == BANK_OTP
+
+
+def test_other_without_actions_is_not_campaign_eligible():
+    generic = frozenset({"OTHER"})
+    assert not is_campaign_eligible(generic)
+    assert is_campaign_eligible(frozenset({"OTHER", "URGENCY"}))
+    assert dominant_fingerprint([("d1", generic), ("d2", generic)]) is None
+    assert cluster_numbers([(1, generic), (2, generic), (3, generic)]) == []
+    assert best_campaign_match(
+        [("d1", generic), ("d2", generic)],
+        [(1, generic)],
+    ) is None
 
 
 def test_cluster_needs_three_numbers():
