@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     default_region: str = "MD"
 
     gemini_api_key: str | None = None
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.8-flash"
     llm_timeout_seconds: float = 8.0
     llm_cache_size: int = 1024
     llm_cache_ttl_seconds: int = 7 * 24 * 3600
