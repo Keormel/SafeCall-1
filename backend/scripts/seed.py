@@ -30,7 +30,8 @@ MD_MOBILE_PREFIXES = ["60", "62", "67", "68", "69", "78", "79"]
 
 CAMPAIGNS = [
     # (category, base actions, numbers, optional extra action for variety)
-    ("BANK", ["OTP", "URGENCY"], 5, "SUSPICIOUS_TRANSACTION"),
+    # 4 generated + SCAM_DEMO_PHONE, which joins this campaign by similarity → 5 numbers (brief: 3–5).
+    ("BANK", ["OTP", "URGENCY"], 4, "SUSPICIOUS_TRANSACTION"),
     ("POLICE", ["TRANSFER", "THREAT"], 4, "URGENCY"),
     ("DELIVERY", ["CARD_DATA"], 3, None),
 ]
