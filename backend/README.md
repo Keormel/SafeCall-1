@@ -13,7 +13,7 @@
 - Пока на номер пожаловались меньше 3 разных устройств, его уровень не поднимается выше `MEDIUM`.
 
 Стек: Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, PostgreSQL, APScheduler, slowapi,
-python-jose, phonenumbers, Anthropic API (`claude-sonnet-4-6`).
+python-jose, phonenumbers, Gemini API (`google-genai`, по умолчанию `gemini-2.5-flash`).
 
 Всё работает одним процессом. Risk engine и campaign engine раньше были заглушками в отдельных
 сервисах `services/*`, теперь это модули в `app/services/`. Схемой БД управляет только Alembic,
@@ -53,7 +53,7 @@ backend/
 Compose поднимает три сервиса: `api` (эта папка), `postgres` и `dashboard`.
 
 ```bash
-cp .env.example .env          # поменяйте JWT_SECRET и ADMIN_API_KEY, при желании задайте ANTHROPIC_API_KEY
+cp .env.example .env          # поменяйте JWT_SECRET и ADMIN_API_KEY, при желании задайте GEMINI_API_KEY
 docker compose up --build -d  # api :8000, dashboard :3000, postgres :5432
 docker compose exec api python -m scripts.seed --reset
 ```
@@ -74,12 +74,12 @@ cd backend
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 
-# Вариант А: SQLite, без внешних зависимостей
-export DATABASE_URL=sqlite+aiosqlite:///./safecall.db
+# PostgreSQL из compose, API локально с --reload
+(cd .. && docker compose up -d postgres)
+ln -sf ../.env .env      # DATABASE_URL из .env.example уже смотрит на localhost:5432
 
-# Вариант Б: Postgres из compose, API локально с --reload
-#   (из корня) docker compose up -d postgres
-#   ln -sf ../.env .env      # DATABASE_URL из .env.example уже смотрит на localhost:5432
+# Если Docker недоступен, для быстрой пробы подойдёт SQLite:
+# export DATABASE_URL=sqlite+aiosqlite:///./safecall.db
 
 alembic upgrade head
 python -m scripts.seed --reset
@@ -88,7 +88,8 @@ uvicorn app.main:app --reload
 
 ### Тесты
 
-Тесты используют временную SQLite-базу, LLM замокан. Ни Postgres, ни ключ API не нужны.
+Тесты используют временную SQLite-базу и замоканный Gemini, поэтому ни Postgres, ни ключ API им не нужны.
+Рабочая база — PostgreSQL; прогон тестов на ней стоит в списке задач.
 
 ```bash
 cd backend && pytest -q          # локально
@@ -124,11 +125,11 @@ openapi-generator-cli generate -i openapi.json -g dart-dio -o safecall_api
 Действия: `SUSPICIOUS_TRANSACTION OTP CARD_DATA TRANSFER INSTALL_APP URGENCY THREAT`.
 
 - Если пришли только чекбоксы, fingerprint собирается из `{category} ∪ actions`, LLM не вызывается.
-- Если есть `free_text`, текст уходит в Claude с системным промптом «верни только JSON».
-  Ответ разбирается защитно: снимаются ```` ```json ````-ограждения, неизвестные теги отбрасываются,
+- Если есть `free_text`, текст уходит в Gemini с системной инструкцией и JSON Schema ответа
+  (structured output: категория и теги только из словаря). Ответ всё равно разбирается защитно: снимаются ```` ```json ````-ограждения, неизвестные теги отбрасываются,
   мусорный ответ даёт `None`. Теги LLM добавляются к чекбоксам. Категорию пользователя LLM
   может уточнить только если пользователь выбрал `OTHER`.
-- Ошибка, таймаут (`LLM_TIMEOUT_SECONDS`), отказ модели или пустой `ANTHROPIC_API_KEY`
+- Ошибка, таймаут (`LLM_TIMEOUT_SECONDS`), ошибка API Gemini (например, квота) или пустой `GEMINI_API_KEY`
   приводят к fallback на чекбоксы.
 - Результат кэшируется в in-memory LRU по HMAC текста.
 
@@ -284,7 +285,7 @@ docker compose exec api python -m scripts.seed --demo-step   # локально:
 ## Конфигурация
 
 Все переменные перечислены в корневом `.env.example`. Самые важные:
-`DATABASE_URL`, `JWT_SECRET`, `ADMIN_API_KEY`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`,
+`DATABASE_URL`, `JWT_SECRET`, `ADMIN_API_KEY`, `GEMINI_API_KEY`, `GEMINI_MODEL`,
 `RATE_LIMIT_*`, `RECALC_INTERVAL_MINUTES`, `SCHEDULER_ENABLED`.
 
 Для дашборда: CORS открыт (`CORS_ORIGINS`), статистику отдаёт `GET /api/v1/admin/stats`

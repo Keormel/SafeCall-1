@@ -61,7 +61,7 @@ async def test_fallback_on_llm_error_and_none():
 
 
 async def test_fallback_when_no_api_key():
-    # ANTHROPIC_API_KEY is empty in tests -> default classifier returns None -> checkbox fingerprint.
+    # GEMINI_API_KEY is empty in tests -> default classifier returns None -> checkbox fingerprint.
     assert await build_fingerprint("BANK", ["OTP"], "text") == ["BANK", "OTP"]
 
 
@@ -82,3 +82,46 @@ def test_free_text_hash_is_not_plaintext():
     assert len(h) == 64
     assert "secret" not in h
     assert h == hash_free_text("  Secret   complaint ")
+
+
+class _FakeModels:
+    def __init__(self, text=None, exc=None):
+        self.text, self.exc, self.calls = text, exc, []
+
+    async def generate_content(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.exc:
+            raise self.exc
+        return type("Resp", (), {"text": self.text})()
+
+
+def _fake_client(models):
+    return type("Client", (), {"aio": type("Aio", (), {"models": models})()})()
+
+
+async def test_gemini_classifier_request_and_parse(monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "gemini_api_key", "test-key")
+    models = _FakeModels(text='{"category": "BANK", "tags": ["OTP", "NOT_A_TAG"]}')
+    monkeypatch.setattr(fingerprint, "_get_gemini_client", lambda: _fake_client(models))
+
+    assert await fingerprint.gemini_classifier("просили код") == LLMResult("BANK", ("OTP",))
+    call = models.calls[0]
+    assert call["model"] == get_settings().gemini_model
+    assert "<complaint>" in call["contents"]
+    assert call["config"].response_mime_type == "application/json"
+    assert call["config"].response_json_schema == fingerprint.RESPONSE_SCHEMA
+
+
+async def test_gemini_api_error_falls_back(monkeypatch):
+    from google.genai import errors
+
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "gemini_api_key", "test-key")
+    models = _FakeModels(exc=errors.ClientError(429, {"error": {"message": "quota"}}))
+    monkeypatch.setattr(fingerprint, "_get_gemini_client", lambda: _fake_client(models))
+
+    assert await fingerprint.gemini_classifier("text") is None
+    assert await build_fingerprint("BANK", ["OTP"], "another text") == ["BANK", "OTP"]
