@@ -1,0 +1,19 @@
+# секреты
+.env
+.env.*
+!.env.example
+
+# python
+venv/
+__pycache__/
+*.pyc
+
+# node
+node_modules/
+frontend/dist/
+
+# мусор
+*.log
+.DS_Store
+.vscode/
+.idea/
