@@ -18,6 +18,7 @@ from sqlalchemy import delete, func, select
 from app import db
 from app.jobs import recalculate_all
 from app.models import Campaign, CampaignNumber, Device, Feedback, Number, Report, utcnow
+from app.services import risk_engine
 from app.services.fingerprint import fingerprint_from_checkboxes
 from app.services.phone import normalize_phone
 from app.services.report_service import check_payload, submit_report
@@ -132,6 +133,8 @@ async def seed(reset_first: bool, seed_value: int) -> None:
         some_numbers = (await session.scalars(select(Number).limit(10))).all()
         for number in some_numbers:
             session.add(Feedback(device_id=gen.rng.choice(devices).id, number_id=number.id, was_correct=True))
+        await session.flush()
+        await risk_engine.recalculate_device_reputations(session)
         await session.commit()
 
         unknown = [gen.phone() for _ in range(10)]
