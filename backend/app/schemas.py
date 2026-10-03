@@ -1,0 +1,166 @@
+import uuid
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.models import RiskLevel
+from app.services.fingerprint import Action, Category
+
+PhoneStr = Field(min_length=3, max_length=32, examples=["+37369123456"])
+
+
+class ErrorDetail(BaseModel):
+    code: str
+    message: str
+
+
+class ErrorResponse(BaseModel):
+    error: ErrorDetail
+
+
+class HealthResponse(BaseModel):
+    status: Literal["ok"] = "ok"
+
+
+# --- auth
+class DeviceAuthRequest(BaseModel):
+    device_id: uuid.UUID
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int = Field(description="Seconds until expiry")
+
+
+# --- numbers
+class CheckNumberRequest(BaseModel):
+    phone: str = PhoneStr
+
+
+class CheckNumberResponse(BaseModel):
+    phone: str
+    risk_level: RiskLevel
+    risk_score: int
+    campaign_id: int | None = None
+    campaign_type: str | None = None
+    reports_count: int = 0
+
+
+class NumberOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    phone: str
+    risk_level: RiskLevel
+    risk_score: int
+    reports_count: int
+    unique_reporters_count: int
+    campaign_id: int | None
+    campaign_type: str | None = None
+    updated_at: datetime
+
+
+class NumberList(BaseModel):
+    items: list[NumberOut]
+    total: int
+    limit: int
+    offset: int
+
+
+# --- reports
+class ReportRequest(BaseModel):
+    phone: str = PhoneStr
+    category: Category
+    actions: list[Action] = Field(default_factory=list, max_length=len(Action))
+    free_text: str | None = Field(
+        default=None,
+        max_length=1000,
+        description="Optional complaint text. Used only to build a fingerprint, never stored.",
+    )
+
+
+class ReportAccepted(BaseModel):
+    status: Literal["accepted"] = "accepted"
+
+
+# --- sync
+class SyncItem(BaseModel):
+    phone: str
+    risk_level: RiskLevel
+    risk_score: int
+    campaign_type: str | None
+    updated_at: datetime
+    removed: bool = Field(description="Delete this phone from the local DB")
+
+
+class SyncResponse(BaseModel):
+    items: list[SyncItem]
+    server_time: datetime = Field(description="Pass as `since` in the next sync once all pages are fetched")
+    full_snapshot: bool
+    next_cursor: str | None = None
+    has_more: bool
+
+
+# --- feedback
+class FeedbackRequest(BaseModel):
+    phone: str = PhoneStr
+    was_correct: bool
+
+
+class FeedbackAccepted(BaseModel):
+    status: Literal["accepted"] = "accepted"
+
+
+# --- campaigns
+class CampaignOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    type: str
+    fingerprint: list[str]
+    risk_score: int
+    numbers_count: int
+    reports_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class CampaignNumberOut(BaseModel):
+    phone: str
+    risk_level: RiskLevel
+    risk_score: int
+    reports_count: int
+    similarity_score: float
+
+
+class CampaignDetail(CampaignOut):
+    numbers: list[CampaignNumberOut]
+
+
+class CampaignList(BaseModel):
+    items: list[CampaignOut]
+    total: int
+    limit: int
+    offset: int
+
+
+# --- admin
+class AdminStats(BaseModel):
+    numbers_count: int
+    reports_count: int
+    campaigns_count: int
+    devices_count: int
+    feedback_count: int
+    by_risk_level: dict[RiskLevel, int]
+
+
+class RecalculateResult(BaseModel):
+    numbers_changed: int
+    campaigns_created: int
+
+
+class RemoveNumberResult(BaseModel):
+    phone: str
+    removed: bool
