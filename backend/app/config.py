@@ -34,9 +34,13 @@ class Settings(BaseSettings):
     redis_url: str | None = None
     free_text_max_length: int = 1000
 
+    assistant_timeout_seconds: float = 20.0
+    assistant_max_output_tokens: int = 800
+
     rate_limit_enabled: bool = True
     rate_limit_report: str = "10/hour"
     rate_limit_check: str = "60/minute"
+    rate_limit_assistant: str = "20/hour"
     rate_limit_default: str = "120/minute"
 
     # Report ageing: full weight for the grace period, then halves every half-life.
