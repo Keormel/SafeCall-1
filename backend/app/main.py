@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.routing import APIRoute
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.middleware import SlowAPIMiddleware
 
@@ -18,6 +19,11 @@ logging.basicConfig(
     level=settings.log_level.upper(),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+
+
+def operation_id(route: APIRoute) -> str:
+    """operationId = endpoint function name, so generated clients get `checkNumber`, not `checkNumberApiV1CheckNumberPost`."""
+    return route.name
 
 
 @asynccontextmanager
@@ -37,6 +43,7 @@ app = FastAPI(
     version="1.0.0",
     description="Number-reputation backend for the SafeCall app. No audio or call content is collected.",
     lifespan=lifespan,
+    generate_unique_id_function=operation_id,
 )
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)

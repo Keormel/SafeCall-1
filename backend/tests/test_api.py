@@ -226,3 +226,25 @@ async def test_report_rate_limit_per_device(client):
     finally:
         limiter.enabled = False
         limiter.reset()
+
+
+def test_openapi_operation_ids_are_short_and_unique():
+    from app.main import app
+
+    ids = [op["operationId"] for ops in app.openapi()["paths"].values() for op in ops.values()]
+    assert len(ids) == len(set(ids))
+    assert set(ids) == {
+        "auth_device",
+        "check_number",
+        "list_numbers",
+        "create_report",
+        "sync_numbers",
+        "list_campaigns",
+        "get_campaign",
+        "create_feedback",
+        "get_stats",
+        "recalculate",
+        "remove_number",
+        "restore_number",
+        "health",
+    }

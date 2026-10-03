@@ -103,6 +103,22 @@ curl -s http://localhost:8000/openapi.json -o openapi.json
 openapi-generator-cli generate -i openapi.json -g dart-dio -o safecall_api
 ```
 
+`operationId` равен имени функции эндпоинта, а методы раскладываются по классам по тегам.
+В клиенте получается так:
+
+| Класс | Методы |
+|---|---|
+| `AuthApi` | `authDevice` |
+| `NumbersApi` | `checkNumber`, `listNumbers` |
+| `ReportsApi` | `createReport` |
+| `SyncApi` | `syncNumbers` |
+| `FeedbackApi` | `createFeedback` |
+| `CampaignsApi` | `listCampaigns`, `getCampaign` |
+| `AdminApi` | `getStats`, `recalculate`, `removeNumber`, `restoreNumber` |
+
+Имена закреплены тестом `test_openapi_operation_ids_are_short_and_unique`: переименование функции
+эндпоинта меняет API клиента, и тест это поймает.
+
 ## Как это работает
 
 ### Risk engine (`services/risk_engine.py`)
