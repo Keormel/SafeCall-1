@@ -1,6 +1,6 @@
 """Demo data for SafeCall.
 
-    python -m scripts.seed --reset        # wipe + generate ~100 numbers, 3 campaigns
+    python -m scripts.seed --reset        # wipe + generate ~100 numbers, 3 campaigns, +37367854919 as HIGH
     python -m scripts.seed --demo-step    # one more Bank+OTP report on the demo number
 
 Reports are inserted directly and then scored by the same recalculation job the server runs,
@@ -24,6 +24,8 @@ from app.services.phone import normalize_phone
 from app.services.report_service import check_payload, submit_report
 
 DEMO_PHONE = "+37369000777"
+# Known scammer for the app demo: many Bank + SMS-code reports, so it is scored HIGH.
+SCAM_DEMO_PHONE = "+37367854919"
 MD_MOBILE_PREFIXES = ["60", "62", "67", "68", "69", "78", "79"]
 
 CAMPAIGNS = [
@@ -52,7 +54,7 @@ ACTIONS = ["SUSPICIOUS_TRANSACTION", "OTP", "CARD_DATA", "TRANSFER", "INSTALL_AP
 class Generator:
     def __init__(self, seed: int) -> None:
         self.rng = random.Random(seed)
-        self.used: set[str] = {DEMO_PHONE}
+        self.used: set[str] = {DEMO_PHONE, SCAM_DEMO_PHONE}
 
     def phone(self) -> str:
         while True:
@@ -82,8 +84,10 @@ async def seed(reset_first: bool, seed_value: int) -> None:
         session.add_all(devices)
         await session.flush()
 
-        async def add_number(category_actions: list[tuple[str, list[str]]], reporters: int) -> Number:
-            number = Number(phone=gen.phone())
+        async def add_number(
+            category_actions: list[tuple[str, list[str]]], reporters: int, phone: str | None = None
+        ) -> Number:
+            number = Number(phone=phone or gen.phone())
             session.add(number)
             await session.flush()
             for i, device in enumerate(gen.rng.sample(devices, reporters)):
@@ -127,6 +131,9 @@ async def seed(reset_first: bool, seed_value: int) -> None:
             await add_number([("OTHER", [])], 1)
             stats["ordinary"] += 1
 
+        await add_number([("BANK", ["OTP", "URGENCY", "SUSPICIOUS_TRANSACTION"])], 12, phone=SCAM_DEMO_PHONE)
+        stats["fraud"] += 1
+
         await session.flush()
         changed, created = await recalculate_all(session)
 
@@ -146,6 +153,7 @@ async def seed(reset_first: bool, seed_value: int) -> None:
         print("By risk level:", dict(levels.all()))
         print("Unknown numbers (try /check-number):", ", ".join(unknown))
         print(f"Demo number (no data yet): {DEMO_PHONE}")
+        print(f"Known scammer for the app demo: {SCAM_DEMO_PHONE}")
 
 
 async def demo_step() -> None:

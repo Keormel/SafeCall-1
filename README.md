@@ -9,6 +9,8 @@ campaigns and ships delta updates to the app.
 - `backend/` — FastAPI API: auth, number checks, reports, delta sync, risk and campaign engines,
   LLM fingerprinting, Alembic migrations, seed data, tests. See [backend/README.md](backend/README.md).
 - `dashboard/` — Next.js admin dashboard.
+- `mobile/` — Flutter app (iOS / Android / web for development): number check, reports, scam
+  campaigns, offline number DB via `/sync`. See [mobile/README.md](mobile/README.md).
 
 ## Local stack
 
