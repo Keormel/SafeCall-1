@@ -31,6 +31,11 @@ dist/
 *.swp
 *.swo
 
+# Node / Next.js
+node_modules/
+.next/
+npm-debug.log*
+
 # OS files
 .DS_Store
 Thumbs.db

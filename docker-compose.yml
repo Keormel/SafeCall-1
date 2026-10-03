@@ -9,31 +9,73 @@ services:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hachaton}:${POSTGRES_PASSWORD:-hachaton}@postgres:5432/${POSTGRES_DB:-hachaton}
-      REDIS_URL: redis://redis:6379/0
+      RISK_ENGINE_URL: http://risk-engine:8001
       LLM_API_URL: ${LLM_API_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
-      SAFE_BROWSING_API_KEY: ${SAFE_BROWSING_API_KEY:-}
-      VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-}
-      WHOIS_API_URL: ${WHOIS_API_URL:-}
-      WHISPER_URL: ${WHISPER_URL:-}
+      CAMPAIGN_ENGINE_URL: http://campaign-engine:8002
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      risk-engine:
         condition: service_healthy
-    restart: no
+      campaign-engine:
+        condition: service_healthy
+    restart: unless-stopped
     healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  risk-engine:
+    build:
+      context: ./services/risk-engine
+      dockerfile: Dockerfile
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    expose:
+      - "8001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  campaign-engine:
+    build:
+      context: ./services/campaign-engine
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hachaton}:${POSTGRES_PASSWORD:-hachaton}@postgres:5432/${POSTGRES_DB:-hachaton}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    expose:
+      - "8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "${DASHBOARD_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
 
   postgres:
     image: postgres:16-alpine
@@ -45,32 +87,13 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    restart: no
+      - ./database:/docker-entrypoint-initdb.d:ro
+    restart: unless-stopped
     healthcheck:
-      test:
-        - CMD-SHELL
-        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  redis:
-    image: redis:7.4-alpine
-    command: redis-server --appendonly yes
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    volumes:
-      - redis_data:/data
-    restart: no
-    healthcheck:
-      test:
-        - CMD
-        - redis-cli
-        - ping
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
 volumes:
   postgres_data:
-  redis_data:
