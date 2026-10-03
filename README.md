@@ -1,20 +1,22 @@
-# hachaton
+# SafeCall
+
+Protects against phone scammers without listening to calls: the Android app checks an incoming
+number against a local database, the server aggregates user reports into risk scores and fraud
+campaigns and ships delta updates to the app.
+
+## Layout
+
+- `backend/` — FastAPI API: auth, number checks, reports, delta sync, risk and campaign engines,
+  LLM fingerprinting, Alembic migrations, seed data, tests. See [backend/README.md](backend/README.md).
+- `dashboard/` — Next.js admin dashboard.
 
 ## Local stack
-
-The Docker Compose stack contains:
-
-- FastAPI API for Android/Flutter clients and database synchronization
-- PostgreSQL as the server-side source of truth
-- Rules-only Risk Engine for scoring
-- Campaign Engine for fingerprint similarity
-- Next.js/React admin dashboard
-- Google Gemini integration for basic complaint analysis
 
 ```bash
 cp .env.example .env
 # Set GEMINI_API_KEY in .env before starting the API.
 docker compose up --build
+docker compose exec api python -m scripts.seed --reset   # demo data
 ```
 
 The dashboard runs in Next.js development mode with hot reload enabled. Edit
@@ -95,4 +97,4 @@ Stop the services with:
 docker compose down
 ```
 
-Add `-v` to remove the PostgreSQL data volume.
+Stop with `docker compose down` (add `-v` to drop the database volume).
