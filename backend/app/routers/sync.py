@@ -40,7 +40,7 @@ def _aware(value: datetime) -> datetime:
     response_model=SyncResponse,
     responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}},
 )
-async def sync(
+async def sync_numbers(
     since: datetime | None = Query(None, description="server_time from the previous sync; omit for full snapshot"),
     cursor: str | None = Query(None, description="next_cursor from the previous page"),
     limit: int | None = Query(None, ge=1),

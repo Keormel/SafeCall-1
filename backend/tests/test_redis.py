@@ -107,9 +107,21 @@ def redis_server():
     server.server_close()
 
 
-async def test_rate_limit_is_shared_between_workers_via_redis(redis_server):
+async def test_rate_limit_is_shared_between_workers_via_redis():
+    import redis
+    from fakeredis import FakeConnection, FakeServer
+
+    shared = FakeServer()  # one Redis for the whole cluster
+
     def make_worker() -> FastAPI:
-        limiter = Limiter(key_func=lambda request: "device:x", storage_uri=redis_server, key_prefix="safecall")
+        # Each worker has its own connection pool to the shared server, as separate processes would.
+        pool = redis.ConnectionPool(connection_class=FakeConnection, server=shared)
+        limiter = Limiter(
+            key_func=lambda request: "device:x",
+            storage_uri="redis://shared",
+            storage_options={"connection_pool": pool},
+            key_prefix="safecall",
+        )
         app = FastAPI()
         app.state.limiter = limiter
         app.add_middleware(SlowAPIMiddleware)
