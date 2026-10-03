@@ -19,8 +19,14 @@ services:
   dashboard:
     build:
       context: ./dashboard
+    command: npm run dev
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ./dashboard:/app
+      - /app/node_modules
+      - /app/.next
     ports:
       - "${DASHBOARD_PORT:-3000}:3000"
     depends_on:

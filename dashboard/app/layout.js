@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "SafeCall Admin",
+  title: "67 banane",
   description: "Campaign and complaint administration",
 };
 
