@@ -22,4 +22,8 @@ limiter = Limiter(
     enabled=_settings.rate_limit_enabled,
     default_limits=[_settings.rate_limit_default],
     headers_enabled=False,
+    # Redis makes limits global across workers; if it goes down, slowapi counts in memory meanwhile.
+    storage_uri=_settings.redis_url or "memory://",
+    in_memory_fallback_enabled=bool(_settings.redis_url),
+    key_prefix="safecall",
 )

@@ -22,5 +22,6 @@ docker compose exec api python -m scripts.seed --reset   # demo data
 - Dashboard: <http://localhost:3000>. Runs in Next.js development mode with hot reload: edit
   files under `dashboard/` and changes are applied automatically.
 - PostgreSQL: `localhost:5432`, schema managed by Alembic (applied on API start)
+- Redis: `localhost:6379`, shared rate limits and LLM fingerprint cache for all API workers
 
 Stop with `docker compose down` (add `-v` to drop the database volume).
