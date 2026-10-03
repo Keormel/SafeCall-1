@@ -8,10 +8,11 @@ Backend: FastAPI + SQLAlchemy (Postgres мейн-софта). Frontend: React + 
     python3 -m venv venv
     source venv/bin/activate
     pip install -r requirements.txt
-    cp .env.example .env      # заполнить своими значениями
+    cp ../.env.example .env   # заполнить своими значениями
     uvicorn app.main:app --host 127.0.0.1 --port 8100 --reload
 
 Swagger: http://127.0.0.1:8100/docs
+При запуске через Docker Compose Swagger доступен на http://127.0.0.1:8100/docs.
 
 Аудит пишется в схему `admin` (таблица `admin.audit_logs`).
 Таблицы мейн-софта в `public` админка НЕ создаёт и не мигрирует.

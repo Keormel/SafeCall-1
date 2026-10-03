@@ -8,7 +8,8 @@ campaigns and ships delta updates to the app.
 
 - `backend/` — FastAPI API: auth, number checks, reports, delta sync, risk and campaign engines,
   LLM fingerprinting, Alembic migrations, seed data, tests. See [backend/README.md](backend/README.md).
-- `dashboard/` — Next.js admin dashboard.
+- `admin-morda-sasha/` — FastAPI + React admin panel. See
+  [admin-morda-sasha/README.md](admin-morda-sasha/README.md).
 - `mobile/` — Flutter app (iOS / Android / web for development): number check, reports, scam
   campaigns, offline number DB via `/sync`. See [mobile/README.md](mobile/README.md).
 
@@ -22,8 +23,8 @@ docker compose exec api python -m scripts.seed --reset   # demo data
 ```
 
 - API: <http://localhost:8000> (Swagger at `/docs`, health at `/health`)
-- Dashboard: <http://localhost:3000>. Runs in Next.js development mode with hot reload: edit
-  files under `dashboard/` and changes are applied automatically.
+- Admin API: <http://localhost:8100> (Swagger at `/docs`)
+- Admin panel: <http://localhost:5173>. Vite proxies `/api` requests to the admin API.
 - PostgreSQL: `localhost:5432`, schema managed by Alembic (applied on API start)
 - Redis: `localhost:6379`, shared rate limits and LLM fingerprint cache for all API workers
 

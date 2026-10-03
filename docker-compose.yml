@@ -53,6 +53,8 @@ services:
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     environment:
       VITE_API_PROXY_TARGET: http://admin-api:8100
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "1000"
     volumes:
       - ./admin-morda-sasha/frontend:/app
       - /app/node_modules
