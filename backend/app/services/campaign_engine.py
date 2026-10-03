@@ -33,6 +33,12 @@ CATEGORY_TITLES = {
 ReportFingerprints = list[tuple[str, frozenset[str]]]
 
 
+def is_campaign_eligible(fingerprint: Iterable[str]) -> bool:
+    """Generic "other" complaints need at least one concrete action to form a pattern."""
+    tags = set(fingerprint)
+    return not (Category.OTHER.value in tags and not ACTION_TAGS.intersection(tags))
+
+
 def jaccard(a: Iterable[str], b: Iterable[str]) -> float:
     sa, sb = set(a), set(b)
     union = sa | sb
@@ -56,8 +62,12 @@ def best_campaign_match(
     """A number joins a campaign only if >= 2 independent reporters describe a similar scheme."""
     best: Match | None = None
     for campaign_id, campaign_fp in campaigns:
+        if not is_campaign_eligible(campaign_fp):
+            continue
         sims_by_device: dict[str, float] = {}
         for device_id, fp in reports:
+            if not is_campaign_eligible(fp):
+                continue
             sim = jaccard(fp, campaign_fp)
             if sim >= threshold:
                 sims_by_device[device_id] = max(sim, sims_by_device.get(device_id, 0.0))
@@ -82,7 +92,7 @@ def dominant_fingerprint(
     """Fingerprint backed by the most independent reporters, or None if fewer than 2 agree."""
     best_fp: frozenset[str] | None = None
     best_key: tuple[int, int, int] = (0, 0, 0)
-    for candidate in {fp for _, fp in reports if fp}:
+    for candidate in {fp for _, fp in reports if fp and is_campaign_eligible(fp)}:
         supporters = {d for d, fp in reports if jaccard(fp, candidate) >= threshold}
         exact = sum(1 for _, fp in reports if fp == candidate)
         key = (len(supporters), exact, len(candidate))
@@ -115,6 +125,7 @@ def cluster_numbers(
     min_size: int = MIN_NUMBERS_FOR_CAMPAIGN,
 ) -> list[Cluster]:
     """Greedy clustering of unassigned numbers; clusters smaller than `min_size` are discarded."""
+    candidates = [(nid, fp) for nid, fp in candidates if is_campaign_eligible(fp)]
     remaining = sorted(candidates, key=lambda c: (-len(c[1]), c[0]))
     clusters: list[Cluster] = []
     while remaining:
