@@ -8,8 +8,11 @@ services:
       - path: .env
         required: false
     environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-safecall}:${POSTGRES_PASSWORD:-safecall}@postgres:5432/${POSTGRES_DB:-safecall}
       REDIS_URL: redis://redis:6379/0
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:

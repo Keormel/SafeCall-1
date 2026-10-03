@@ -13,7 +13,7 @@
 - Пока на номер пожаловались меньше 3 разных устройств, его уровень не поднимается выше `MEDIUM`.
 
 Стек: Python 3.12, FastAPI, SQLAlchemy 2 (async), Alembic, PostgreSQL, APScheduler, slowapi,
-python-jose, phonenumbers, Gemini API (`google-genai`, по умолчанию `gemini-2.5-flash`).
+python-jose, phonenumbers, Gemini API (`google-genai`, по умолчанию `gemini-3.8-flash`).
 
 Всё работает одним процессом. Risk engine и campaign engine раньше были заглушками в отдельных
 сервисах `services/*`, теперь это модули в `app/services/`. Схемой БД управляет только Alembic,
